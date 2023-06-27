@@ -34,7 +34,7 @@ use update::UpdateCommand;
 use utils::get_prefix;
 use which::WhichCommand;
 
-use std::{eprintln, format};
+use std::{eprintln, format, path::PathBuf};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Scoopie, your simple package manager
@@ -66,7 +66,7 @@ enum Command {
 fn main() {
     let cmd: Scoopie = argh::from_env();
 
-    let _scoopie_home = match get_prefix() {
+    let scoopie_home = match get_prefix() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("{e}");
@@ -74,14 +74,29 @@ fn main() {
         }
     };
 
-    // let prefix = PathBuf::from(scoopie_home);
+    let prefix = PathBuf::from(scoopie_home);
 
-    // if !prefix.exists() {
-    //     eprintln!(
-    //         "Won't able to find home for Scoopie.\nIt was expected at: {prefix:?}\nConfigure it properly or run `scoopie init`"
-    //     );
-    //     return;
-    // }
+    match (&cmd.cmd, prefix.exists()) {
+        (Command::Init(_), true) => {
+            eprintln!("Error: {} already exists.", prefix.display());
+            return;
+        }
+        (Command::Init(config), false) => match InitCommand::from(&config) {
+            Ok(x) => println!("{x}"),
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
+        },
+        (_, false) => {
+            // If init is not passed and prefix doesn't exist
+            eprintln!(
+                "Error: Scoopie home directory does not exist. Run `scoopie init` to set it up."
+            );
+            return;
+        }
+        _ => {}
+    }
 
     println!("{:?}", cmd);
 }

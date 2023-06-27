@@ -4,7 +4,7 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 
-const PREFIX_KEY: &'static str = "SCOOPIE_DIR";
+const PREFIX_KEY: &'static str = "SCOOPIE_HOME";
 const DEFAULT_PREFIX: &'static str = "scoopie";
 
 #[derive(Debug)]
