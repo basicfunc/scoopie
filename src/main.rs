@@ -34,7 +34,6 @@ use update::UpdateCommand;
 use utils::get_prefix;
 use which::WhichCommand;
 
-use std::path::PathBuf;
 use std::{eprintln, format};
 
 #[derive(FromArgs, PartialEq, Debug)]

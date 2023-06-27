@@ -4,12 +4,12 @@ use argh::FromArgs;
 /// Manage Scoopie buckets
 #[argh(subcommand, name = "bucket")]
 pub struct BucketCommand {
-    #[argh(positional)]
+    #[argh(option)]
     /// add new bucket
-    add: bool,
-    #[argh(switch)]
+    add: Option<String>,
+    #[argh(option)]
     /// remove a bucket
-    rm: bool,
+    rm: Option<String>,
     #[argh(switch)]
     /// list all buckets
     list: bool,
