@@ -1,8 +1,6 @@
 use argh::FromArgs;
 use dirs::{config_dir, home_dir};
-use std::{
-    env, error::Error, fmt::Display, format, fs::create_dir, path::PathBuf, process::Command, write,
-};
+use std::{fs::create_dir, path::PathBuf, process::Command, write};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Initialize all scoopie related stuff.
@@ -22,9 +20,9 @@ pub enum InitErrors {
     UnableToSetEnvVar,
 }
 
-impl Error for InitErrors {}
+impl std::error::Error for InitErrors {}
 
-impl Display for InitErrors {
+impl std::fmt::Display for InitErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::DirAlreadyExists(p) => write!(f, "Directory: {} Already exists.", p.display()),
@@ -43,13 +41,7 @@ pub struct InitSuccess {
     config: PathBuf,
 }
 
-impl InitSuccess {
-    fn new(home: PathBuf, config: PathBuf) -> Self {
-        Self { home, config }
-    }
-}
-
-impl Display for InitSuccess {
+impl std::fmt::Display for InitSuccess {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let sucess = "🎉 Successfully initialized Scoopie.You can now use scoopie!!";
         let info = format!(

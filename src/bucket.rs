@@ -14,3 +14,4 @@ pub struct BucketCommand {
     /// list all buckets
     list: bool,
 }
+

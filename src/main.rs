@@ -15,8 +15,10 @@ mod update;
 mod utils;
 mod which;
 
+// External Crate Imports.
 use argh::FromArgs;
 
+// Internal Module Imports
 use bucket::BucketCommand;
 use cache::CacheCommand;
 use cat::CatCommand;
@@ -33,8 +35,6 @@ use uninstall::UninstallCommand;
 use update::UpdateCommand;
 use utils::get_prefix;
 use which::WhichCommand;
-
-use std::{eprintln, format, path::PathBuf};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Scoopie, your simple package manager
@@ -74,11 +74,9 @@ fn main() {
         }
     };
 
-    let prefix = PathBuf::from(scoopie_home);
-
-    match (&cmd.cmd, prefix.exists()) {
+    match (&cmd.cmd, &scoopie_home.exists()) {
         (Command::Init(_), true) => {
-            eprintln!("Error: {} already exists.", prefix.display());
+            println!("INFO: $SCOOPIE_HOME already exists.");
             return;
         }
         (Command::Init(config), false) => match InitCommand::from(&config) {
