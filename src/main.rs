@@ -1,82 +1,36 @@
-mod bucket;
-mod cache;
-mod cat;
-mod cleanup;
-mod download;
-mod info;
-mod init;
-mod install;
-mod list;
-mod search;
-mod shim;
-mod status;
-mod uninstall;
-mod update;
-mod utils;
-mod which;
+use std::eprintln;
 
 // External Crate Imports.
-use argh::FromArgs;
+use argh::from_env;
 
 // Internal Module Imports
-use bucket::BucketCommand;
-use cache::CacheCommand;
-use cat::CatCommand;
-use cleanup::CleanupCommand;
-use download::DownloadCommand;
-use info::InfoCommand;
-use init::InitCommand;
-use install::InstallCommand;
-use list::ListCommand;
-use search::SearchCommand;
-use shim::ShimCommand;
-use status::StatusCommand;
-use uninstall::UninstallCommand;
-use update::UpdateCommand;
-use utils::get_prefix;
-use which::WhichCommand;
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Scoopie, your simple package manager
-struct Scoopie {
-    #[argh(subcommand)]
-    cmd: Command,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand)]
-enum Command {
-    Bucket(BucketCommand),
-    Cache(CacheCommand),
-    Cat(CatCommand),
-    Cleanup(CleanupCommand),
-    Download(DownloadCommand),
-    Info(InfoCommand),
-    Init(InitCommand),
-    Install(InstallCommand),
-    List(ListCommand),
-    Search(SearchCommand),
-    Shim(ShimCommand),
-    Status(StatusCommand),
-    Uninstall(UninstallCommand),
-    Update(UpdateCommand),
-    Which(WhichCommand),
-}
+use scoopie::init::InitCommand;
+use scoopie::nuke::NukeCommand;
+use scoopie::prefix::PrefixCommand;
+use scoopie::{Command, Scoopie};
 
 fn main() {
-    let cmd: Scoopie = argh::from_env();
+    let cmd: Scoopie = from_env();
 
-    let scoopie_home = match get_prefix() {
-        Ok(path) => path,
+    let info = match PrefixCommand::show() {
+        Ok(i) => i,
         Err(e) => {
             eprintln!("{e}");
             return;
         }
     };
 
+    let scoopie_home = info.0;
+    let config_dir = info.1;
+
     match (&cmd.cmd, &scoopie_home.exists()) {
         (Command::Init(_), true) => {
-            println!("INFO: $SCOOPIE_HOME already exists.");
+            println!(
+                "Prefix: {}\nConfig: {}",
+                PrefixCommand::prefix().unwrap().display(),
+                PrefixCommand::config().unwrap().display()
+            );
+            println!("INFO: Scoopie is already initialized.");
             return;
         }
         (Command::Init(config), false) => match InitCommand::from(&config) {
@@ -93,6 +47,14 @@ fn main() {
             );
             return;
         }
+        _ => {}
+    }
+
+    match &cmd.cmd {
+        Command::Nuke(_) => match NukeCommand::nuke(&[&scoopie_home, &config_dir]) {
+            Ok(_) => println!("👋🏻 Goodbye!!"),
+            Err(e) => eprintln!("{e}"),
+        },
         _ => {}
     }
 
