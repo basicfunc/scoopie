@@ -3,17 +3,18 @@ use std::eprintln;
 // External Crate Imports.
 use argh::from_env;
 
+use scoopie::bucket::BucketCommand;
 // Internal Module Imports
 use scoopie::cat::CatCommand;
 use scoopie::init::InitCommand;
 use scoopie::nuke::NukeCommand;
-use scoopie::prefix::PrefixCommand;
+use scoopie::ScoopieInfo;
 use scoopie::{Command, Scoopie};
 
 fn main() {
     let cmd: Scoopie = from_env();
 
-    let info = match PrefixCommand::show() {
+    let info = match ScoopieInfo::get() {
         Ok(i) => i,
         Err(e) => {
             eprintln!("Error: {e}");
@@ -21,16 +22,12 @@ fn main() {
         }
     };
 
-    let scoopie_home = info.0;
-    let config_dir = info.1;
+    let scoopie_home = &info.home;
+    let config_dir = &info.config;
 
     match (&cmd.cmd, &scoopie_home.exists()) {
         (Command::Init(_), true) => {
-            println!(
-                "Prefix: {}\nConfig: {}",
-                PrefixCommand::prefix().unwrap().display(),
-                PrefixCommand::config().unwrap().display()
-            );
+            println!("{info}");
             println!("INFO: Scoopie is already initialized.");
             return;
         }
@@ -52,14 +49,15 @@ fn main() {
     }
 
     match &cmd.cmd {
-        Command::Nuke(_) => match NukeCommand::nuke(&[&scoopie_home, &config_dir]) {
+        Command::Nuke(_) => match NukeCommand::nuke(&info) {
             Ok(_) => println!("👋🏻 Goodbye!!"),
             Err(e) => eprintln!("Error: {e}"),
         },
-        Command::Cat(config) => match CatCommand::from(&config) {
+        Command::Cat(config) => match CatCommand::run(&config) {
             Ok(()) => {}
             Err(e) => eprintln!("Error: {e}"),
         },
+        Command::Bucket(config) => BucketCommand::run(&config, &info.buckets),
         _ => {}
     }
 
