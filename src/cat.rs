@@ -82,7 +82,7 @@ impl std::fmt::Display for WriteError {
 }
 
 impl CatCommand {
-    pub fn from(config: &CatCommand) -> Result<(), CatError> {
+    pub fn run(config: &CatCommand) -> Result<(), CatError> {
         let file = File::open(&config.app).map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => CatError::Read(ReadError::FileNotFound),
             io::ErrorKind::PermissionDenied => CatError::Read(ReadError::PermissionDenied),
