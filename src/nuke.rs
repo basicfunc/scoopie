@@ -2,6 +2,7 @@ use std::{error::Error, fs::remove_dir_all, path::PathBuf, process::Command, wri
 
 use argh::FromArgs;
 
+use crate::ScoopieInfo;
 use crate::PREFIX_KEY;
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -39,21 +40,21 @@ impl std::fmt::Display for NukeError {
 }
 
 impl NukeCommand {
-    pub fn nuke(paths: &[&PathBuf]) -> Result<(), NukeError> {
-        for path in paths {
-            match remove_dir_all(path) {
-                Ok(()) => (),
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        return Err(NukeError::FileNotExist(path.to_path_buf()))
-                    }
-                    std::io::ErrorKind::PermissionDenied => {
-                        return Err(NukeError::LackOfPermission)
-                    }
-                    _ => return Err(NukeError::Failed(path.to_path_buf(), Box::new(e))),
-                },
-            }
-        }
+    pub fn nuke(info: &ScoopieInfo) -> Result<(), NukeError> {
+        let scoopie_home = &info.home;
+        let config_path = &info.config;
+
+        remove_dir_all(scoopie_home).map_err(|err| match err.kind() {
+            std::io::ErrorKind::NotFound => NukeError::FileNotExist(scoopie_home.to_path_buf()),
+            std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
+            _ => NukeError::Failed(scoopie_home.to_path_buf(), Box::new(err)),
+        })?;
+
+        remove_dir_all(config_path).map_err(|err| match err.kind() {
+            std::io::ErrorKind::NotFound => NukeError::FileNotExist(scoopie_home.to_path_buf()),
+            std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
+            _ => NukeError::Failed(scoopie_home.to_path_buf(), Box::new(err)),
+        })?;
 
         let o = Command::new("cmd")
             .args(&[
