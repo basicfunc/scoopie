@@ -4,6 +4,7 @@ use std::eprintln;
 use argh::from_env;
 
 // Internal Module Imports
+use scoopie::cat::CatCommand;
 use scoopie::init::InitCommand;
 use scoopie::nuke::NukeCommand;
 use scoopie::prefix::PrefixCommand;
@@ -15,7 +16,7 @@ fn main() {
     let info = match PrefixCommand::show() {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("Error: {e}");
             return;
         }
     };
@@ -36,7 +37,7 @@ fn main() {
         (Command::Init(config), false) => match InitCommand::from(&config) {
             Ok(x) => println!("{x}"),
             Err(e) => {
-                eprintln!("{e}");
+                eprintln!("Error: {e}");
                 return;
             }
         },
@@ -53,7 +54,11 @@ fn main() {
     match &cmd.cmd {
         Command::Nuke(_) => match NukeCommand::nuke(&[&scoopie_home, &config_dir]) {
             Ok(_) => println!("👋🏻 Goodbye!!"),
-            Err(e) => eprintln!("{e}"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
+        Command::Cat(config) => match CatCommand::from(&config) {
+            Ok(()) => {}
+            Err(e) => eprintln!("Error: {e}"),
         },
         _ => {}
     }
