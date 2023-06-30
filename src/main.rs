@@ -9,8 +9,14 @@ mod remove;
 
 use argh::FromArgs;
 
+use info::InfoCommand;
 use init::InitCommand;
+use install::InstallCommand;
+use list::ListCommand;
+use locate::LocateCommand;
 use nuke::NukeCommand;
+use query::QueryCommand;
+use remove::RemoveCommand;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Scoopie, your favorite package manager
@@ -31,67 +37,6 @@ enum Command {
     Query(QueryCommand),
     Remove(RemoveCommand),
 }
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Install specified app or Update app(s)
-#[argh(subcommand, name = "install")]
-struct InstallCommand {
-    #[argh(positional)]
-    app: Option<String>,
-
-    #[argh(switch, short = 'S')]
-    /// sync all repos
-    sync: bool,
-
-    #[argh(switch, short = 'a')]
-    /// update all apps
-    update_all: bool,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Removes the specified app
-#[argh(subcommand, name = "rm")]
-struct RemoveCommand {
-    #[argh(positional)]
-    app: Option<String>,
-
-    #[argh(switch, short = 'a')]
-    /// remove all apps
-    all: bool,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Search available apps (supports regex and full-text search)
-#[argh(subcommand, name = "query")]
-struct QueryCommand {
-    #[argh(positional)]
-    query: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Shows the location of specified app
-#[argh(subcommand, name = "locate")]
-struct LocateCommand {
-    #[argh(positional)]
-    app: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// Shows information related to specified app
-#[argh(subcommand, name = "info")]
-struct InfoCommand {
-    #[argh(positional)]
-    app: Option<String>,
-
-    #[argh(switch)]
-    /// show mainfest of app
-    show_mainfest: bool,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-/// List all installed apps
-#[argh(subcommand, name = "list")]
-struct ListCommand {}
 
 fn main() {
     let cmd: Scoopie = argh::from_env();
