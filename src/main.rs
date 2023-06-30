@@ -44,7 +44,7 @@ fn main() {
     println!("{:?}", cmd);
 
     match cmd {
-        Command::Install(_) => todo!(),
+        Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
         Command::Query(_) => todo!(),
         Command::Locate(_) => todo!(),

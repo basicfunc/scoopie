@@ -2,6 +2,8 @@ use argh::FromArgs;
 use dirs::data_dir;
 use std::{env, error::Error, fs::remove_dir_all, path::PathBuf, process::Command};
 
+pub type NukeResult = Result<(), NukeError>;
+
 #[derive(FromArgs, PartialEq, Debug)]
 /// Destorys all Scoopie related stuff
 #[argh(subcommand, name = "nuke")]
@@ -18,7 +20,7 @@ pub enum NukeError {
 }
 
 impl NukeCommand {
-    pub fn from() -> Result<(), NukeError> {
+    pub fn from() -> NukeResult {
         let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| NukeError::EnvResolve)?;
         let scoopie_home = PathBuf::from(scoopie_home);
 
@@ -33,7 +35,7 @@ impl NukeCommand {
     }
 }
 
-fn rmdir(path: &PathBuf) -> Result<(), NukeError> {
+fn rmdir(path: &PathBuf) -> NukeResult {
     remove_dir_all(&path).map_err(|err| match err.kind() {
         std::io::ErrorKind::NotFound => NukeError::FileNotExist(path.to_path_buf()),
         std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
@@ -41,7 +43,7 @@ fn rmdir(path: &PathBuf) -> Result<(), NukeError> {
     })
 }
 
-fn remove_env_var(var: &str) -> Result<(), NukeError> {
+fn remove_env_var(var: &str) -> NukeResult {
     Command::new("cmd")
         .args(&["/C", "REG", "delete", r"HKCU\Environment", "/F", "/V", &var])
         .output()

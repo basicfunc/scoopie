@@ -10,6 +10,8 @@ use std::{
 };
 use toml::Value;
 
+pub type InitResult = Result<ScoopieDirStats, InitError>;
+
 #[derive(FromArgs, PartialEq, Debug)]
 /// Initialize Scoopie, useful while installing Scoopie itself
 #[argh(subcommand, name = "init")]
@@ -56,7 +58,7 @@ impl Display for ScoopieDirStats {
 }
 
 impl InitCommand {
-    pub fn from(config: InitCommand) -> Result<ScoopieDirStats, InitError> {
+    pub fn from(config: InitCommand) -> InitResult {
         let home_dir = home_dir().ok_or(InitError::HomeDirUnavailable)?;
 
         let scoopie_path = match config.path {
