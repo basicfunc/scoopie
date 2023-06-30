@@ -1,78 +1,56 @@
-use std::{error::Error, fs::remove_dir_all, path::PathBuf, process::Command, write};
-
 use argh::FromArgs;
-
-use crate::ScoopieInfo;
-use crate::PREFIX_KEY;
+use dirs::data_dir;
+use std::{env, error::Error, fs::remove_dir_all, path::PathBuf, process::Command};
 
 #[derive(FromArgs, PartialEq, Debug)]
-/// Say, Goodbye Scoopie!!
+/// Destorys all Scoopie related stuff
 #[argh(subcommand, name = "nuke")]
 pub struct NukeCommand {}
 
 #[derive(Debug)]
 pub enum NukeError {
-    Failed(PathBuf, Box<dyn Error>),
+    EnvResolve,
     FileNotExist(PathBuf),
-    EnvRemoveError,
     LackOfPermission,
-}
-
-impl std::error::Error for NukeError {}
-
-impl std::fmt::Display for NukeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            NukeError::Failed(d, e) => {
-                write!(
-                    f,
-                    "Unknow error: {e:?} ocurred while deleting: {}.",
-                    d.display()
-                )
-            }
-            NukeError::FileNotExist(dir) => write!(f, "Dir: {} doesn't exists.", dir.display()),
-            NukeError::LackOfPermission => {
-                write!(f, "You don't have valid permissions to delete file.")
-            }
-            NukeError::EnvRemoveError => write!(f, "Unable to remove environment variable."),
-        }
-    }
+    Failed(PathBuf, Box<dyn Error>),
+    EnvRemoveError,
+    DataDirUnavailable,
 }
 
 impl NukeCommand {
-    pub fn nuke(info: &ScoopieInfo) -> Result<(), NukeError> {
-        let scoopie_home = &info.home;
-        let config_path = &info.config;
+    pub fn from() -> Result<(), NukeError> {
+        let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| NukeError::EnvResolve)?;
+        let scoopie_home = PathBuf::from(scoopie_home);
 
-        remove_dir_all(scoopie_home).map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => NukeError::FileNotExist(scoopie_home.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
-            _ => NukeError::Failed(scoopie_home.to_path_buf(), Box::new(err)),
-        })?;
+        let data_dir = data_dir().ok_or(NukeError::DataDirUnavailable)?;
+        let scoopie_data_dir = data_dir.join("scoopie");
 
-        remove_dir_all(config_path).map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => NukeError::FileNotExist(scoopie_home.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
-            _ => NukeError::Failed(scoopie_home.to_path_buf(), Box::new(err)),
-        })?;
-
-        let o = Command::new("cmd")
-            .args(&[
-                "/C",
-                "REG",
-                "delete",
-                r"HKCU\Environment",
-                "/F",
-                "/V",
-                PREFIX_KEY,
-            ])
-            .output()
-            .map_err(|_| NukeError::EnvRemoveError)?;
-
-        if !o.status.success() {
-            return Err(NukeError::EnvRemoveError);
-        }
+        rmdir(&scoopie_home)?;
+        rmdir(&scoopie_data_dir)?;
+        remove_env_var("SCOOPIE_HOME")?;
 
         Ok(())
     }
+}
+
+fn rmdir(path: &PathBuf) -> Result<(), NukeError> {
+    remove_dir_all(&path).map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => NukeError::FileNotExist(path.to_path_buf()),
+        std::io::ErrorKind::PermissionDenied => NukeError::LackOfPermission,
+        _ => NukeError::Failed(path.to_path_buf(), Box::new(err)),
+    })
+}
+
+fn remove_env_var(var: &str) -> Result<(), NukeError> {
+    Command::new("cmd")
+        .args(&["/C", "REG", "delete", r"HKCU\Environment", "/F", "/V", &var])
+        .output()
+        .map_err(|_| NukeError::EnvRemoveError)
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(NukeError::EnvRemoveError)
+            }
+        })
 }

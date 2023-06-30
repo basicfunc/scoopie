@@ -15,4 +15,5 @@ rayon = "1.7.0"
 regex = "1.8.4"
 serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.99"
+toml = "0.7.5"
 url = "2.4.0"

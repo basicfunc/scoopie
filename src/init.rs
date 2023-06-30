@@ -1,145 +1,164 @@
-use crate::{DEFAULT_PREFIX, PREFIX_KEY};
 use argh::FromArgs;
-use dirs::{config_dir, home_dir};
-use std::{fs::DirBuilder, path::PathBuf, process::Command};
+use dirs::{data_dir, home_dir};
+use std::{
+    fmt::Display,
+    fs::{DirBuilder, File},
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+    vec,
+};
+use toml::Value;
 
 #[derive(FromArgs, PartialEq, Debug)]
-/// Initialize all scoopie related stuff.
+/// Initialize Scoopie, useful while installing Scoopie itself
 #[argh(subcommand, name = "init")]
 pub struct InitCommand {
-    #[argh(option)]
-    /// path where you would like to give home to scoopie.
-    path: Option<String>,
+    #[argh(positional)]
+    path: Option<PathBuf>,
 }
 
 #[derive(Debug)]
-pub enum InitErrors {
-    DirAlreadyExists(PathBuf),
+pub enum InitError {
     HomeDirUnavailable,
-    ConfigDirUnavailable,
-    UnableToCreateDir(PathBuf),
+    DataDirUnavailable,
+    ScoopieDirAlreadyexists(PathBuf),
+    FailedToMkdir(PathBuf),
+    FailedToTouch(PathBuf),
+    TOMLParse,
+    ConfigWrite,
     UnableToSetEnvVar,
-    NotFound(PathBuf),
-    PermissionDenied(PathBuf),
-    Unknown,
+    AbsoultePathResolve,
 }
 
-impl std::error::Error for InitErrors {}
+const DEFAULT_TOML: &'static str = r#"
+[repos]
+main = "https://github.com/ScoopInstaller/Main"
+"#;
 
-impl std::fmt::Display for InitErrors {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::DirAlreadyExists(p) => write!(f, "Directory: {} already exists.", p.display()),
-            Self::HomeDirUnavailable => write!(f, "Unable to get HOME directory."),
-            Self::ConfigDirUnavailable => write!(f, "Unable to get CONFIG directory."),
-            Self::UnableToCreateDir(p) => write!(f, "Unable to create directory: {}.", p.display()),
-            Self::UnableToSetEnvVar => {
-                write!(f, "Unable to set environment variable $SCOOPIE_HOME")
-            }
-            Self::NotFound(file) => write!(f, "Unable to find file: {}", file.display()),
-            Self::PermissionDenied(file) => {
-                write!(f, "Permission Denied to access file: {}", file.display())
-            }
-            _ => write!(f, "Unknown!"),
-        }
-    }
-}
-
-pub struct InitSuccess {
+#[derive(Debug)]
+pub struct ScoopieDirStats {
     home: PathBuf,
+    data: PathBuf,
     config: PathBuf,
 }
 
-impl std::fmt::Display for InitSuccess {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let success = "🎉 Successfully initialized Scoopie. You can now use scoopie!!";
-        let info = format!(
-            "INFO: Scoopie is located in {} and its configs are located at {}",
+impl Display for ScoopieDirStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nData at: {}\nConfig at: {}",
             self.home.display(),
+            self.data.display(),
             self.config.display()
-        );
-
-        write!(f, "{}\n{}", success, info)
+        )
     }
 }
 
 impl InitCommand {
-    pub fn from(config: &InitCommand) -> Result<InitSuccess, InitErrors> {
-        let scoopie_path = config.path.clone();
+    pub fn from(config: InitCommand) -> Result<ScoopieDirStats, InitError> {
+        let home_dir = home_dir().ok_or(InitError::HomeDirUnavailable)?;
 
-        let home_dir = home_dir().ok_or(InitErrors::HomeDirUnavailable)?;
+        let scoopie_path = match config.path {
+            Some(x) => get_absolute_path(&x)?,
+            None => home_dir.clone(),
+        }
+        .join("scoopie");
 
-        let config_dir = config_dir().ok_or(InitErrors::ConfigDirUnavailable)?;
-        let config_dir = config_dir.join(DEFAULT_PREFIX);
-
-        let path = scoopie_path
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir.join(DEFAULT_PREFIX));
-
-        let apps_dir = path.join("apps");
-        let buckets_dir = path.join("buckets");
-        let buckets_json = buckets_dir.join("buckets.json");
-        let cache_dir = path.join("cache");
-        let persist_dir = path.join("persist");
-        let shims_dir = path.join("shims");
-
-        if path.exists() {
-            return Err(InitErrors::DirAlreadyExists(path.clone()));
+        if scoopie_path.exists() {
+            return Err(InitError::ScoopieDirAlreadyexists(scoopie_path));
         }
 
-        let mut builder = DirBuilder::new();
-        let builder = builder.recursive(true);
+        let directories = vec![
+            scoopie_path.clone(),
+            scoopie_path.join("apps"),
+            scoopie_path.join("persists"),
+            scoopie_path.join("shims"),
+        ];
 
-        builder
-            .create(&path)
-            .map_err(|_| InitErrors::UnableToCreateDir(path.clone()))?;
+        directories
+            .iter()
+            .try_for_each(|path| create_directory(path))?;
 
-        builder
-            .create(&apps_dir)
-            .map_err(|_| InitErrors::UnableToCreateDir(apps_dir.clone()))?;
-
-        builder
-            .create(&buckets_dir)
-            .map_err(|_| InitErrors::UnableToCreateDir(buckets_dir.clone()))?;
-
-        builder
-            .create(&cache_dir)
-            .map_err(|_| InitErrors::UnableToCreateDir(cache_dir.clone()))?;
-
-        builder
-            .create(&persist_dir)
-            .map_err(|_| InitErrors::UnableToCreateDir(persist_dir.clone()))?;
-
-        builder
-            .create(&shims_dir)
-            .map_err(|_| InitErrors::UnableToCreateDir(shims_dir.clone()))?;
-
-        std::fs::write(&buckets_json, "").map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => InitErrors::NotFound(buckets_json),
-            std::io::ErrorKind::PermissionDenied => InitErrors::PermissionDenied(buckets_json),
-            _ => InitErrors::Unknown,
-        })?;
+        let config_dir = home_dir.join(".config");
 
         if !config_dir.exists() {
-            builder
-                .create(&config_dir)
-                .map_err(|_| InitErrors::UnableToCreateDir(config_dir.clone()))?;
+            create_directory(&config_dir)?;
         }
 
-        let scoopie_path = path.display().to_string();
+        let scoopie_config = config_dir.join("scoopie.toml");
 
-        let output = Command::new("cmd")
-            .args(&["/C", "setx", PREFIX_KEY, &scoopie_path])
-            .output()
-            .map_err(|_| InitErrors::UnableToSetEnvVar)?;
+        if !scoopie_config.exists() {
+            let toml: Value = toml::from_str(DEFAULT_TOML).map_err(|_| InitError::TOMLParse)?;
 
-        if !output.status.success() {
-            return Err(InitErrors::UnableToSetEnvVar);
+            let toml = toml::to_string_pretty(&toml).map_err(|_| InitError::TOMLParse)?;
+
+            write_toml(&scoopie_config, toml.as_bytes())?;
         }
 
-        Ok(InitSuccess {
-            home: path,
-            config: config_dir,
+        let data_dir = data_dir().ok_or(InitError::DataDirUnavailable)?;
+        let scoopie_data_dir = data_dir.join("scoopie");
+
+        if !scoopie_data_dir.exists() {
+            let data_dirs = vec![scoopie_data_dir.clone(), scoopie_data_dir.join("repos")];
+
+            data_dirs
+                .iter()
+                .try_for_each(|path| create_directory(path))?;
+
+            let repo = scoopie_data_dir.join("repos.json");
+            File::create(&repo).map_err(|_| InitError::FailedToTouch(repo))?;
+        }
+
+        set_environment_variable("SCOOPIE_HOME", &scoopie_path.display().to_string())?;
+
+        Ok(ScoopieDirStats {
+            home: scoopie_path,
+            data: scoopie_data_dir,
+            config: scoopie_config,
         })
     }
+}
+
+fn get_absolute_path(path: &PathBuf) -> Result<PathBuf, InitError> {
+    let absolute_path = path
+        .canonicalize()
+        .map_err(|_| InitError::AbsoultePathResolve)?;
+    let absolute_path_str = absolute_path.to_string_lossy().to_string();
+
+    // Remove the `\\?\` prefix from the absolute path string
+    let path_without_prefix = if absolute_path_str.starts_with("\\\\?\\") {
+        absolute_path_str[4..].to_string()
+    } else {
+        absolute_path_str
+    };
+
+    Ok(PathBuf::from(path_without_prefix))
+}
+
+fn set_environment_variable(name: &str, value: &str) -> Result<(), InitError> {
+    Command::new("cmd")
+        .args(&["/C", "setx", name, value])
+        .output()
+        .map_err(|_| InitError::UnableToSetEnvVar)
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(InitError::UnableToSetEnvVar)
+            }
+        })
+}
+
+fn create_directory(path: &Path) -> Result<(), InitError> {
+    DirBuilder::new()
+        .recursive(true)
+        .create(path)
+        .map_err(|_| InitError::FailedToMkdir(path.to_path_buf()))
+}
+
+fn write_toml(path: &Path, data: &[u8]) -> Result<(), InitError> {
+    File::create(path)
+        .map_err(|_| InitError::FailedToTouch(path.to_path_buf()))
+        .and_then(|mut file| file.write_all(data).map_err(|_| InitError::ConfigWrite))
 }

@@ -1,65 +1,117 @@
-use std::eprintln;
+mod info;
+mod init;
+mod install;
+mod list;
+mod locate;
+mod nuke;
+mod query;
+mod remove;
 
-// External Crate Imports.
-use argh::from_env;
+use argh::FromArgs;
 
-use scoopie::bucket::BucketCommand;
-// Internal Module Imports
-use scoopie::cat::CatCommand;
-use scoopie::init::InitCommand;
-use scoopie::nuke::NukeCommand;
-use scoopie::ScoopieInfo;
-use scoopie::{Command, Scoopie};
+use init::InitCommand;
+use nuke::NukeCommand;
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Scoopie, your favorite package manager
+struct Scoopie {
+    #[argh(subcommand)]
+    cmd: Command,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+enum Command {
+    Info(InfoCommand),
+    Init(InitCommand),
+    Install(InstallCommand),
+    List(ListCommand),
+    Locate(LocateCommand),
+    Nuke(NukeCommand),
+    Query(QueryCommand),
+    Remove(RemoveCommand),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Install specified app or Update app(s)
+#[argh(subcommand, name = "install")]
+struct InstallCommand {
+    #[argh(positional)]
+    app: Option<String>,
+
+    #[argh(switch, short = 'S')]
+    /// sync all repos
+    sync: bool,
+
+    #[argh(switch, short = 'a')]
+    /// update all apps
+    update_all: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Removes the specified app
+#[argh(subcommand, name = "rm")]
+struct RemoveCommand {
+    #[argh(positional)]
+    app: Option<String>,
+
+    #[argh(switch, short = 'a')]
+    /// remove all apps
+    all: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Search available apps (supports regex and full-text search)
+#[argh(subcommand, name = "query")]
+struct QueryCommand {
+    #[argh(positional)]
+    query: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Shows the location of specified app
+#[argh(subcommand, name = "locate")]
+struct LocateCommand {
+    #[argh(positional)]
+    app: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Shows information related to specified app
+#[argh(subcommand, name = "info")]
+struct InfoCommand {
+    #[argh(positional)]
+    app: Option<String>,
+
+    #[argh(switch)]
+    /// show mainfest of app
+    show_mainfest: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// List all installed apps
+#[argh(subcommand, name = "list")]
+struct ListCommand {}
 
 fn main() {
-    let cmd: Scoopie = from_env();
-
-    let info = match ScoopieInfo::get() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            return;
-        }
-    };
-
-    let scoopie_home = &info.home;
-    let config_dir = &info.config;
-
-    match (&cmd.cmd, &scoopie_home.exists()) {
-        (Command::Init(_), true) => {
-            println!("{info}");
-            println!("INFO: Scoopie is already initialized.");
-            return;
-        }
-        (Command::Init(config), false) => match InitCommand::from(&config) {
-            Ok(x) => println!("{x}"),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                return;
-            }
-        },
-        (_, false) => {
-            // If init is not passed and prefix doesn't exist
-            eprintln!(
-                "Error: Scoopie home directory does not exist. Run `scoopie init` to set it up."
-            );
-            return;
-        }
-        _ => {}
-    }
-
-    match &cmd.cmd {
-        Command::Nuke(_) => match NukeCommand::nuke(&info) {
-            Ok(_) => println!("👋🏻 Goodbye!!"),
-            Err(e) => eprintln!("Error: {e}"),
-        },
-        Command::Cat(config) => match CatCommand::run(&config) {
-            Ok(()) => {}
-            Err(e) => eprintln!("Error: {e}"),
-        },
-        Command::Bucket(config) => BucketCommand::run(&config, &info.buckets),
-        _ => {}
-    }
-
+    let cmd: Scoopie = argh::from_env();
+    let cmd = cmd.cmd;
     println!("{:?}", cmd);
+
+    match cmd {
+        Command::Install(_) => todo!(),
+        Command::Remove(_) => todo!(),
+        Command::Query(_) => todo!(),
+        Command::Locate(_) => todo!(),
+        Command::Info(_) => todo!(),
+        Command::Init(config) => match InitCommand::from(config) {
+            Ok(x) => println!("{x}"),
+            Err(e) => eprintln!("{e:?}"),
+        },
+        Command::List(_) => todo!(),
+        Command::Nuke(_) => match NukeCommand::from() {
+            Ok(_) => println!("👋🏻 Goodbye, Scoopie has been deleted!"),
+            Err(e) => eprintln!("{e:?}"),
+        },
+    }
 }
