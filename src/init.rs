@@ -24,7 +24,7 @@ pub struct InitCommand {
 pub enum InitError {
     HomeDirUnavailable,
     DataDirUnavailable,
-    ScoopieDirAlreadyexists(PathBuf),
+    ScoopieDirAlreadyExists(PathBuf),
     FailedToMkdir(PathBuf),
     FailedToTouch(PathBuf),
     TOMLParse,
@@ -68,7 +68,7 @@ impl InitCommand {
         .join("scoopie");
 
         if scoopie_path.exists() {
-            return Err(InitError::ScoopieDirAlreadyexists(scoopie_path));
+            return Err(InitError::ScoopieDirAlreadyExists(scoopie_path));
         }
 
         let directories = vec![
@@ -107,9 +107,6 @@ impl InitCommand {
             data_dirs
                 .iter()
                 .try_for_each(|path| create_directory(path))?;
-
-            let repo = scoopie_data_dir.join("repos.json");
-            File::create(&repo).map_err(|_| InitError::FailedToTouch(repo))?;
         }
 
         set_environment_variable("SCOOPIE_HOME", &scoopie_path.display().to_string())?;

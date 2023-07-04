@@ -1,3 +1,4 @@
+mod db;
 mod sync;
 
 use std::todo;
