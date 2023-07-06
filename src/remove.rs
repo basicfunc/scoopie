@@ -10,4 +10,8 @@ pub struct RemoveCommand {
     #[argh(switch, short = 'a')]
     /// remove all apps
     all: bool,
+
+    #[argh(switch, short = 'c')]
+    /// remove cached apps and repos
+    cache: bool,
 }
