@@ -1,23 +1,10 @@
-use std::{
-    fs::{self, remove_file},
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 use crate::config::Config;
-
-use super::sync::Repo;
+use crate::error::{BucketError, ScoopieError};
+use crate::install::sync::Repo;
 use rusqlite::Connection;
 use serde_json::Value;
-
-#[derive(Debug)]
-pub enum BucketError {
-    BucketsNotFound,
-    NotFound,
-    PermissionDenied,
-    MainfestRead,
-    InvalidJSON,
-    Unknown,
-}
 
 #[derive(Debug, Default)]
 pub struct Entry {
@@ -38,7 +25,7 @@ pub struct Bucket {
 }
 
 impl Bucket {
-    pub fn fetch_from(repo: Repo) -> Result<Bucket, BucketError> {
+    pub fn fetch_from(repo: Repo) -> Result<Bucket, ScoopieError> {
         let db_name = format!("{}-{}", repo.name, repo.commit_id);
         let mut bucket = Bucket {
             name: db_name,
@@ -46,13 +33,14 @@ impl Bucket {
         };
 
         let bucket_path = &repo.path.join("bucket");
-        let entries = fs::read_dir(bucket_path).map_err(|_| BucketError::BucketsNotFound)?;
+        let entries = fs::read_dir(bucket_path)
+            .map_err(|_| ScoopieError::Bucket(BucketError::BucketsNotFound))?;
 
         for entry in entries {
             let entry = entry.map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => BucketError::NotFound,
-                std::io::ErrorKind::PermissionDenied => BucketError::PermissionDenied,
-                _ => BucketError::Unknown,
+                std::io::ErrorKind::NotFound => ScoopieError::Bucket(BucketError::NotFound),
+                std::io::ErrorKind::PermissionDenied => ScoopieError::PermissionDenied,
+                _ => ScoopieError::Unknown,
             })?;
 
             let file_path = entry.path();
@@ -62,11 +50,11 @@ impl Bucket {
                 let app_name = file_path.file_stem().unwrap_or(file_path.as_os_str());
                 let app_name = app_name.to_string_lossy().to_string();
 
-                let file_content =
-                    fs::read_to_string(&file_path).map_err(|_| BucketError::MainfestRead)?;
+                let file_content = fs::read_to_string(&file_path)
+                    .map_err(|_| ScoopieError::Bucket(BucketError::MainfestRead))?;
 
-                let json: Value =
-                    serde_json::from_str(&file_content).map_err(|_| BucketError::InvalidJSON)?;
+                let json: Value = serde_json::from_str(&file_content)
+                    .map_err(|_| ScoopieError::Bucket(BucketError::InvalidJSON))?;
 
                 let mainfest = json.to_string();
 
@@ -79,49 +67,60 @@ impl Bucket {
 }
 
 #[derive(Debug)]
-pub enum DBError {
-    UnableToOpen,
-    FailedToCreateTable,
-    FailedToMkStmt,
-    FailedInsertion,
-    FailedToRmOld,
-    FailedToCommit,
+enum DBStatus {
+    Created,
+    AlreadyExists,
 }
 
-pub struct DB {}
+#[derive(Debug)]
+pub struct DB {
+    name: String,
+    path: PathBuf,
+    status: DBStatus,
+}
 
 impl DB {
-    pub fn create_from(bucket: Bucket) -> Result<PathBuf, DBError> {
+    pub fn create_from(bucket: Bucket) -> Result<DB, ScoopieError> {
         let repo = format!("{}.db", bucket.name);
         let db = Config::repos_dir().unwrap().join(&repo);
 
         if db.exists() {
-            remove_file(&db).map_err(|_| DBError::FailedToRmOld)?;
+            return Ok(DB {
+                name: repo,
+                path: db,
+                status: DBStatus::AlreadyExists,
+            });
         }
 
-        let conn = Connection::open(&db).map_err(|_| DBError::UnableToOpen)?;
+        let conn = Connection::open(&db)
+            .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::UnableToOpen))?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS mainfests (
-                 id INTEGER PRIMARY KEY,
-                 app_name TEXT,
-                 manifest TEXT
+                 app_name TEXT PRIMARY KEY,
+                 mainfest TEXT
              )",
             [],
         )
-        .map_err(|_| DBError::FailedToCreateTable)?;
+        .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::FailedToCreateTable))?;
 
         let mut stmt = conn
-            .prepare("INSERT INTO mainfests (app_name, manifest) VALUES (?, ?)")
-            .map_err(|_| DBError::FailedToMkStmt)?;
+            .prepare("INSERT INTO mainfests (app_name, mainfest) VALUES (?, ?)")
+            .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::FailedToMkStmt))?;
 
         for mainfest in bucket.mainfests {
             stmt.execute(&[&mainfest.app_name, &mainfest.mainfest])
-                .map_err(|_| DBError::FailedInsertion)?;
+                .map_err(|_| {
+                    ScoopieError::Database(crate::error::DatabaseError::FailedInsertion)
+                })?;
         }
 
         // conn.close().map_err(|_| DBError::FailedToCommit)?;
 
-        Ok(db)
+        Ok(DB {
+            name: repo,
+            path: db,
+            status: DBStatus::Created,
+        })
     }
 }

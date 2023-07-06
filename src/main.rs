@@ -1,4 +1,5 @@
 mod config;
+mod error;
 mod info;
 mod init;
 mod install;

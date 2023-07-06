@@ -10,7 +10,9 @@ use std::{
 };
 use toml::Value;
 
-pub type InitResult = Result<ScoopieDirStats, InitError>;
+use crate::error::{InitError, ScoopieError};
+
+pub type InitResult = Result<ScoopieDirStats, ScoopieError>;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Initialize Scoopie, useful while installing Scoopie itself
@@ -18,19 +20,6 @@ pub type InitResult = Result<ScoopieDirStats, InitError>;
 pub struct InitCommand {
     #[argh(positional)]
     path: Option<PathBuf>,
-}
-
-#[derive(Debug)]
-pub enum InitError {
-    HomeDirUnavailable,
-    DataDirUnavailable,
-    ScoopieDirAlreadyExists(PathBuf),
-    FailedToMkdir(PathBuf),
-    FailedToTouch(PathBuf),
-    TOMLParse,
-    ConfigWrite,
-    UnableToSetEnvVar,
-    AbsoultePathResolve,
 }
 
 const DEFAULT_TOML: &'static str = r#"
@@ -46,7 +35,7 @@ pub struct ScoopieDirStats {
 }
 
 impl Display for ScoopieDirStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nData at: {}\nConfig at: {}",
@@ -59,7 +48,7 @@ impl Display for ScoopieDirStats {
 
 impl InitCommand {
     pub fn from(config: InitCommand) -> InitResult {
-        let home_dir = home_dir().ok_or(InitError::HomeDirUnavailable)?;
+        let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
 
         let scoopie_path = match config.path {
             Some(x) => get_absolute_path(&x)?,
@@ -68,7 +57,7 @@ impl InitCommand {
         .join("scoopie");
 
         if scoopie_path.exists() {
-            return Err(InitError::ScoopieDirAlreadyExists(scoopie_path));
+            return Err(ScoopieError::DirAlreadyExists(scoopie_path));
         }
 
         let directories = vec![
@@ -91,14 +80,16 @@ impl InitCommand {
         let scoopie_config = config_dir.join("scoopie.toml");
 
         if !scoopie_config.exists() {
-            let toml: Value = toml::from_str(DEFAULT_TOML).map_err(|_| InitError::TOMLParse)?;
+            let toml: Value = toml::from_str(DEFAULT_TOML)
+                .map_err(|_| ScoopieError::Init(InitError::TOMLParse))?;
 
-            let toml = toml::to_string_pretty(&toml).map_err(|_| InitError::TOMLParse)?;
+            let toml = toml::to_string_pretty(&toml)
+                .map_err(|_| ScoopieError::Init(InitError::TOMLParse))?;
 
             write_toml(&scoopie_config, toml.as_bytes())?;
         }
 
-        let data_dir = data_dir().ok_or(InitError::DataDirUnavailable)?;
+        let data_dir = data_dir().ok_or(ScoopieError::DataDirUnavailable)?;
         let scoopie_data_dir = data_dir.join("scoopie");
 
         if !scoopie_data_dir.exists() {
@@ -119,10 +110,10 @@ impl InitCommand {
     }
 }
 
-fn get_absolute_path(path: &PathBuf) -> Result<PathBuf, InitError> {
+fn get_absolute_path(path: &PathBuf) -> Result<PathBuf, ScoopieError> {
     let absolute_path = path
         .canonicalize()
-        .map_err(|_| InitError::AbsoultePathResolve)?;
+        .map_err(|_| ScoopieError::AbsoultePathResolve)?;
     let absolute_path_str = absolute_path.to_string_lossy().to_string();
 
     // Remove the `\\?\` prefix from the absolute path string
@@ -135,29 +126,32 @@ fn get_absolute_path(path: &PathBuf) -> Result<PathBuf, InitError> {
     Ok(PathBuf::from(path_without_prefix))
 }
 
-fn set_environment_variable(name: &str, value: &str) -> Result<(), InitError> {
+fn set_environment_variable(name: &str, value: &str) -> Result<(), ScoopieError> {
     Command::new("cmd")
         .args(&["/C", "setx", name, value])
         .output()
-        .map_err(|_| InitError::UnableToSetEnvVar)
+        .map_err(|_| ScoopieError::Init(InitError::UnableToSetEnvVar))
         .and_then(|output| {
             if output.status.success() {
                 Ok(())
             } else {
-                Err(InitError::UnableToSetEnvVar)
+                Err(ScoopieError::Init(InitError::UnableToSetEnvVar))
             }
         })
 }
 
-fn create_directory(path: &Path) -> Result<(), InitError> {
+fn create_directory(path: &Path) -> Result<(), ScoopieError> {
     DirBuilder::new()
         .recursive(true)
         .create(path)
-        .map_err(|_| InitError::FailedToMkdir(path.to_path_buf()))
+        .map_err(|_| ScoopieError::FailedToMkdir(path.to_path_buf()))
 }
 
-fn write_toml(path: &Path, data: &[u8]) -> Result<(), InitError> {
+fn write_toml(path: &Path, data: &[u8]) -> Result<(), ScoopieError> {
     File::create(path)
-        .map_err(|_| InitError::FailedToTouch(path.to_path_buf()))
-        .and_then(|mut file| file.write_all(data).map_err(|_| InitError::ConfigWrite))
+        .map_err(|_| ScoopieError::FailedToTouch(path.to_path_buf()))
+        .and_then(|mut file| {
+            file.write_all(data)
+                .map_err(|_| ScoopieError::Init(InitError::ConfigWrite))
+        })
 }
