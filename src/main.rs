@@ -48,7 +48,7 @@ fn main() {
     match cmd {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
-        Command::Query(_) => todo!(),
+        Command::Query(q) => QueryCommand::from(q),
         Command::Locate(_) => todo!(),
         Command::Info(_) => todo!(),
         Command::Init(config) => match InitCommand::from(config) {

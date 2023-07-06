@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use argh::FromArgs;
 use dirs::data_dir;
-use regex::Regex;
+use regex::RegexBuilder;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Search available apps (supports regex and full-text search)
@@ -23,7 +23,10 @@ enum QueryType {
 
 impl QueryType {
     fn from(query: &str) -> QueryType {
-        if Regex::new(query).is_ok() {
+        if RegexBuilder::new(query)
+            .build()
+            .is_ok_and(|x| x.is_match(""))
+        {
             QueryType::Regex
         } else if query.contains(" ") {
             QueryType::FullText
@@ -34,9 +37,10 @@ impl QueryType {
 }
 
 impl QueryCommand {
-    pub fn query(query: &QueryCommand) {
-        let q = query.query.clone();
+    pub fn from(query: QueryCommand) {
+        let q = query.query;
         let q = q.trim();
+        // let q = q.trim_matches('"');
 
         let result = match QueryType::from(q) {
             QueryType::AppName => Self::query_app(q),
@@ -44,19 +48,22 @@ impl QueryCommand {
             QueryType::FullText => Self::full_text_search(q),
         };
 
-        result.unwrap();
+        // Ok(())
     }
 
     fn query_app(app_name: &str) -> Result<(), QueryError> {
-        todo!()
+        println!("App: {}", app_name);
+        Ok(())
     }
 
     fn full_text_search(query: &str) -> Result<(), QueryError> {
-        todo!()
+        println!("Query: {}", query);
+        Ok(())
     }
 
     fn regex(re: &str) -> Result<(), QueryError> {
-        todo!()
+        println!("Regex: {}", re);
+        Ok(())
     }
 }
 

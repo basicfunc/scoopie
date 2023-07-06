@@ -98,8 +98,6 @@ pub enum ConfigError {
     Interrupted,
     #[error("Unexpected end of file")]
     UnexpectedEof,
-    #[error("Unknown error")]
-    Unknown,
     #[error("Invalid TOML")]
     InvalidToml,
     #[error("No repo")]

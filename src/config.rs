@@ -49,8 +49,11 @@ impl Config {
         Ok(Config { config: toml })
     }
 
-    pub fn repos(&self) -> Result<RepoList, ConfigError> {
-        let repos = self.config.get("repos").ok_or(ConfigError::NoRepo)?;
+    pub fn repos(&self) -> Result<RepoList, ScoopieError> {
+        let repos = self
+            .config
+            .get("repos")
+            .ok_or(ScoopieError::Config(ConfigError::NoRepo))?;
 
         let mut repo_list = RepoList::new();
 
