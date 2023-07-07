@@ -1,14 +1,13 @@
-use std::ffi::OsStr;
-use std::{fs, path::PathBuf};
+use std::{ffi::OsStr, fs, path::PathBuf};
 
-use git2::Repository;
-use rayon::prelude::*;
+use git2::build::RepoBuilder;
+use rayon::{current_num_threads, current_thread_index, prelude::*};
 use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::tempdir;
 
 use crate::config::Config;
-use crate::error::BucketError;
+use crate::error::{BucketError, DatabaseError};
 use crate::error::{ScoopieError, SyncError};
 
 pub struct Sync {}
@@ -20,16 +19,29 @@ impl Sync {
         let temp_dir = tempdir().map_err(|_| ScoopieError::Sync(SyncError::UnableToMkTmpDir))?;
         let temp_dir = temp_dir.path();
 
-        repos
+        let databases: Result<Vec<Database>, ScoopieError> = repos
             .par_iter()
-            .try_for_each(|(name, url)| -> Result<(), ScoopieError> {
-                let repo = Repo::clone(name, url, &temp_dir.join(name))?;
-                let bucket = Bucket::fetch_from(repo)?;
-                let database = Database::create_from(bucket)?;
+            .map(|(name, url)| {
+                let repo = Repo::fetch(name, url, &temp_dir.join(name))?;
+                let id = format!("{}-{}.db", repo.name, repo.commit_id);
+                let repo_dir = Config::repos_dir()?;
+                let repo_path = repo_dir.join(id);
 
-                println!("{:?}", database);
-                Ok(())
-            })?;
+                if !repo_path.exists() {
+                    let bucket = Bucket::fetch_from(repo)?;
+                    Database::create_from(bucket)
+                } else {
+                    Ok(Database {
+                        name: repo.name.into(),
+                        path: repo_dir,
+                        state: DatabaseState::AlreadyExists,
+                    })
+                }
+            })
+            .collect();
+
+        let databases = databases?;
+        println!("{:?}", databases);
 
         Ok(())
     }
@@ -37,18 +49,21 @@ impl Sync {
 
 #[derive(Debug, Default)]
 struct Repo {
-    pub name: String,
-    pub commit_id: String,
-    pub path: PathBuf,
+    name: String,
+    commit_id: String,
+    path: PathBuf,
 }
 
 impl Repo {
-    fn clone(name: &String, url: &String, path: &PathBuf) -> Result<Repo, ScoopieError> {
-        let repo = Repository::clone(url, &path)
+    fn fetch(name: &String, url: &String, path: &PathBuf) -> Result<Repo, ScoopieError> {
+        let repo = RepoBuilder::new()
+            .clone(url, &path)
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
+
         let head = repo
             .head()
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetHead))?;
+
         let commit_id = head
             .peel_to_commit()
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetCommit))?
@@ -63,16 +78,7 @@ impl Repo {
 }
 
 #[derive(Debug, Default)]
-struct Entry {
-    app_name: String,
-    mainfest: String,
-}
-
-impl Entry {
-    pub fn new(app_name: String, mainfest: String) -> Self {
-        Self { app_name, mainfest }
-    }
-}
+struct Entry(String, String);
 
 #[derive(Debug, Default)]
 struct Bucket {
@@ -116,7 +122,7 @@ impl Bucket {
 
                 let mainfest = json.to_string();
 
-                bucket.mainfests.push(Entry::new(app_name, mainfest));
+                bucket.mainfests.push(Entry(app_name, mainfest));
             }
         }
 
@@ -124,11 +130,10 @@ impl Bucket {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 enum DatabaseState {
     AlreadyExists,
     Created,
-    Updated,
 }
 
 #[derive(Debug)]
@@ -146,61 +151,45 @@ impl Database {
         let repo_dir = Config::repos_dir()?;
         let db = repo_dir.join(&repo);
 
-        if db.exists() {
-            return Ok(Database {
-                name: repo,
-                path: db,
-                state: DatabaseState::AlreadyExists,
-            });
-        }
-
         let conn = Connection::open(&db)
-            .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::UnableToOpen))?;
+            .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS mainfests (
-                 app_name TEXT PRIMARY KEY,
+                 app_name TEXT NOT NULL PRIMARY KEY,
                  mainfest TEXT
              )",
             [],
         )
-        .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::FailedToCreateTable))?;
+        .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
         let mut stmt = conn
             .prepare("INSERT INTO mainfests (app_name, mainfest) VALUES (?, ?)")
-            .map_err(|_| ScoopieError::Database(crate::error::DatabaseError::FailedToMkStmt))?;
+            .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
         for mainfest in bucket.mainfests {
-            stmt.execute(&[&mainfest.app_name, &mainfest.mainfest])
-                .map_err(|_| {
-                    ScoopieError::Database(crate::error::DatabaseError::FailedInsertion)
-                })?;
+            stmt.execute(&[&mainfest.0, &mainfest.1])
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
         }
-
-        let state = if has_database(&repo_dir, &bucket.name) {
-            DatabaseState::Updated
-        } else {
-            DatabaseState::Created
-        };
 
         Ok(Database {
             name: repo,
             path: db,
-            state,
+            state: DatabaseState::Created,
         })
     }
 }
 
-fn has_database(db_dir: &PathBuf, db_prefix: &str) -> bool {
-    fs::read_dir(db_dir)
-        .map(|entries| {
-            entries
-                .filter_map(|entry| {
-                    entry
-                        .ok()
-                        .and_then(|e| e.file_name().to_str().map(|name| name.to_owned()))
-                })
-                .any(|name| name.starts_with(db_prefix) && name.ends_with(".db"))
-        })
-        .unwrap_or(false)
-}
+// fn has_older_database(db_dir: &PathBuf, db_prefix: &str) -> bool {
+//     fs::read_dir(db_dir)
+//         .map(|entries| {
+//             entries
+//                 .filter_map(|entry| {
+//                     entry
+//                         .ok()
+//                         .and_then(|e| e.file_name().to_str().map(|name| name.to_owned()))
+//                 })
+//                 .any(|name| name.starts_with(db_prefix) && name.ends_with(".db"))
+//         })
+//         .unwrap_or(false)
+// }

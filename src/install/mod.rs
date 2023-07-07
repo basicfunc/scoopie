@@ -26,7 +26,10 @@ pub struct InstallCommand {
 impl InstallCommand {
     pub fn from(args: InstallCommand) {
         if args.sync {
-            println!("{:?}", Sync::sync());
+            match Sync::sync() {
+                Ok(_) => {}
+                Err(e) => eprintln!("{e}"),
+            }
         } else {
             todo!()
         }

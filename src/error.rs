@@ -64,6 +64,12 @@ pub enum DatabaseError {
     FailedToMkStmt,
     #[error("Failed to insert mainfest to database")]
     FailedInsertion,
+    #[error("Failed to set pragmas for database optimizations")]
+    FailedToSetPragma,
+    #[error("Failed to begin transction")]
+    FailedToBeginTransaction,
+    #[error("Failed to commit transction")]
+    FailedToCommitTransaction,
 }
 
 #[derive(Debug, Error)]
