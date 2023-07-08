@@ -172,6 +172,18 @@ impl Database {
                 .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
         }
 
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS mainfests_fts USING FTS5(app_name, mainfest)",
+            [],
+        )
+        .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+
+        conn.execute(
+            "INSERT INTO mainfests_fts(app_name, mainfest) SELECT app_name, mainfest FROM mainfests",
+            [],
+        )
+        .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
+
         Ok(Database {
             name: repo,
             path: db,
