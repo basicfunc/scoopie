@@ -1,9 +1,16 @@
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
-
-use dirs::{data_dir, home_dir};
-use toml::Value;
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
+    time::SystemTime,
+};
 
 use crate::error::{ConfigError, ScoopieError};
+
+use dirs::{data_dir, home_dir};
+use rayon::prelude::*;
+use toml::Value;
 
 pub type RepoList = HashMap<String, String>;
 
@@ -66,6 +73,48 @@ impl Config {
         }
 
         Ok(repo_list)
+    }
+
+    pub fn latest_repos(&self) -> Result<Vec<PathBuf>, ScoopieError> {
+        let repo_dir = Self::repos_dir()?;
+        let repos = self
+            .config
+            .get("repos")
+            .ok_or(ScoopieError::Config(ConfigError::NoRepo))?;
+
+        let repo_names: Result<Vec<String>, ScoopieError> = if let Value::Table(table) = repos {
+            Ok(table.keys().cloned().collect::<Vec<String>>())
+        } else {
+            Err(ScoopieError::Config(ConfigError::NoRepo))
+        };
+
+        let repo_names = repo_names?;
+
+        let entries = fs::read_dir(repo_dir)
+            .map_err(|_| ScoopieError::Config(ConfigError::NoRepo))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| ScoopieError::Config(ConfigError::NoRepo))?;
+
+        let mut latest_files: Vec<PathBuf> = Vec::new();
+
+        repo_names.iter().for_each(|repo_name| {
+            let latest_path = entries
+                .par_iter()
+                .filter(|entry| {
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    file_name.ends_with(".db") && file_name.starts_with(repo_name)
+                })
+                .max_by_key(|entry| {
+                    entry
+                        .metadata()
+                        .and_then(|metadata| metadata.modified())
+                        .unwrap_or_else(|_| SystemTime::UNIX_EPOCH)
+                });
+
+            latest_path.map_or((), |path| latest_files.push(path.path()));
+        });
+
+        Ok(latest_files)
     }
 
     pub fn repos_dir() -> Result<PathBuf, ScoopieError> {
