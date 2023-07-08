@@ -1,7 +1,7 @@
 use std::{ffi::OsStr, fs, path::PathBuf};
 
 use git2::build::RepoBuilder;
-use rayon::{current_num_threads, current_thread_index, prelude::*};
+use rayon::prelude::*;
 use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::tempdir;
