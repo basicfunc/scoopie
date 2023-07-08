@@ -108,6 +108,10 @@ pub enum ConfigError {
     InvalidToml,
     #[error("No repo")]
     NoRepo,
+    #[error("Unable to get entry in repos dir")]
+    UnableToGetEntry,
+    #[error("Unable to get metadata of database files")]
+    UnableToGetMetadata,
 }
 
 #[derive(Debug, Error)]
@@ -116,4 +120,12 @@ pub enum QueryError {
     ScoopieWorkingDirUnavailable,
     #[error("Repos directory unavailable")]
     ReposDirUnavailable,
+    #[error("Invalid Query")]
+    InvalidQuery,
+    #[error("Failed to retrieve data")]
+    FailedToRetrieveData,
+    #[error("Found invalid JSON while retrieving data")]
+    InavlidJSONData,
+    #[error("Failed to query")]
+    FailedToQuery,
 }
