@@ -4,7 +4,12 @@ use argh::FromArgs;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use rusqlite::{params, Connection, Error, Row};
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value};
+use serde_json::{self, from_str, to_value, Value};
+
+use crate::{
+    config::Config,
+    error::{DatabaseError, QueryError, ScoopieError},
+};
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Search available apps (supports full-text search)
@@ -14,10 +19,40 @@ pub struct QueryCommand {
     query: String,
 }
 
-use crate::{
-    config::Config,
-    error::{DatabaseError, QueryError, ScoopieError},
-};
+impl QueryCommand {
+    pub fn from(query: QueryCommand) -> Result<Vec<AppInfo>, ScoopieError> {
+        let q = query.query;
+        let q = q.trim();
+
+        match q.contains(" ") {
+            true => Self::full_text_search(q),
+            false => Self::query_app(q),
+        }
+    }
+
+    fn full_text_search(query: &str) -> Result<Vec<AppInfo>, ScoopieError> {
+        let results = Query::builder(
+            "SELECT app_name, mainfest FROM mainfests_fts WHERE mainfest MATCH (?)",
+        )?
+        .run(query)?;
+
+        Ok(results
+            .par_iter()
+            .map(|raw_result| AppInfo::from(raw_result))
+            .collect())
+    }
+
+    fn query_app(app_name: &str) -> Result<Vec<AppInfo>, ScoopieError> {
+        let results =
+            Query::builder("SELECT app_name, mainfest FROM mainfests WHERE app_name LIKE ?")?
+                .run(&format!("%{app_name}%"))?;
+
+        Ok(results
+            .par_iter()
+            .map(|raw_result| AppInfo::from(raw_result))
+            .collect())
+    }
+}
 
 #[derive(Debug)]
 struct QueryResult {
@@ -25,8 +60,32 @@ struct QueryResult {
     mainfest: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct RawData {
+    pub repo_name: String,
+    pub app_name: String,
+    pub mainfest: Value,
+}
+
+impl RawData {
+    fn new(repo: &PathBuf, app_name: String, mainfest: Value) -> Self {
+        let db_name = &repo
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let repo_name = db_name.split('-').next().unwrap_or_default().to_string();
+
+        Self {
+            repo_name,
+            app_name,
+            mainfest,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AppInfo {
+struct AppInfo {
     repo_name: String,
     app_name: String,
     version: String,
@@ -35,17 +94,11 @@ pub struct AppInfo {
 }
 
 impl AppInfo {
-    fn from(repo: &PathBuf, value: QueryResult) -> Result<AppInfo, ScoopieError> {
-        let app_name = value.app_name;
-        let mainfest: Value = serde_json::from_str(&value.mainfest)
-            .map_err(|_| ScoopieError::Query(QueryError::InavlidJSONData))?;
+    fn from(raw: &RawData) -> Self {
+        let repo_name = raw.repo_name.clone();
+        let app_name = raw.app_name.clone();
 
-        let db_name = &repo
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        let repo_name = db_name.split('-').next().unwrap_or_default().to_string();
+        let mainfest = raw.mainfest.clone();
 
         let description = mainfest
             .get("description")
@@ -55,49 +108,23 @@ impl AppInfo {
         let binaries = mainfest.get("bin").unwrap_or(&Value::Null).to_string();
         let version = mainfest.get("version").unwrap_or(&Value::Null).to_string();
 
-        Ok(AppInfo {
+        Self {
             repo_name,
             app_name,
             version,
             description,
             binaries,
-        })
+        }
     }
 }
 
-impl QueryCommand {
-    pub fn from(query: QueryCommand) -> Result<Vec<AppInfo>, ScoopieError> {
-        let q = query.query;
-        let q = q.trim();
-
-        let result = match q.contains(" ") {
-            true => Self::full_text_search(q),
-            false => Self::query_app(q),
-        };
-
-        let result = result?;
-
-        Ok(result.concat())
-    }
-
-    fn full_text_search(query: &str) -> Result<Vec<Vec<AppInfo>>, ScoopieError> {
-        Query::builder("SELECT app_name, mainfest FROM mainfests_fts WHERE mainfest MATCH (?)")?
-            .run(query)
-    }
-
-    fn query_app(app_name: &str) -> Result<Vec<Vec<AppInfo>>, ScoopieError> {
-        Query::builder("SELECT app_name, mainfest FROM mainfests WHERE app_name LIKE ?")?
-            .run(&format!("%{app_name}%"))
-    }
-}
-
-struct Query {
+pub struct Query {
     repos: Vec<PathBuf>,
     stmt: String,
 }
 
 impl Query {
-    fn builder(stmt: &str) -> Result<Query, ScoopieError> {
+    pub fn builder(stmt: &str) -> Result<Query, ScoopieError> {
         let repos = Config::read()?.latest_repos()?;
         Ok(Self {
             repos,
@@ -105,16 +132,17 @@ impl Query {
         })
     }
 
-    fn run(&self, params: &str) -> Result<Vec<Vec<AppInfo>>, ScoopieError> {
+    pub fn run(&self, params: &str) -> Result<Vec<RawData>, ScoopieError> {
         let fetch_row = |row: &Row| -> Result<QueryResult, Error> {
             let app_name = row.get(0)?;
             let mainfest = row.get(1)?;
             Ok(QueryResult { app_name, mainfest })
         };
 
-        self.repos
+        let results: Result<Vec<Vec<RawData>>, ScoopieError> = self
+            .repos
             .par_iter()
-            .map(|repo| -> Result<Vec<AppInfo>, ScoopieError> {
+            .map(|repo| -> Result<Vec<RawData>, ScoopieError> {
                 let conn = Connection::open(&repo)
                     .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
@@ -127,14 +155,21 @@ impl Query {
                     .map_err(|_| ScoopieError::Query(QueryError::FailedToQuery))?;
 
                 rows.into_iter()
-                    .map(|row| -> Result<AppInfo, ScoopieError> {
+                    .map(|row| -> Result<RawData, ScoopieError> {
                         let row =
                             row.map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))?;
 
-                        AppInfo::from(&repo, row)
+                        let app_name = row.app_name;
+                        let mainfest = from_str(&row.mainfest)
+                            .map_err(|_| ScoopieError::Query(QueryError::InavlidJSONData))?;
+
+                        Ok(RawData::new(&repo, app_name, mainfest))
                     })
                     .collect()
             })
-            .collect()
+            .collect();
+
+        let results: Vec<Vec<RawData>> = results?;
+        Ok(results.concat())
     }
 }
