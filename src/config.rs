@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    env,
     fs::{self, File},
     io::Read,
     path::PathBuf,
@@ -118,8 +119,31 @@ impl Config {
     }
 
     pub fn repos_dir() -> Result<PathBuf, ScoopieError> {
-        Ok(data_dir()
-            .ok_or(ScoopieError::DataDirUnavailable)?
-            .join(r"scoopie\repos"))
+        let data_dir = data_dir().ok_or(ScoopieError::DataDirUnavailable)?;
+        let repos_dir = data_dir.join(r"scoopie\repos");
+
+        match repos_dir.exists() {
+            true => Ok(repos_dir),
+            false => Err(ScoopieError::ReposDirUnavailable),
+        }
+    }
+
+    pub fn cache_dir() -> Result<PathBuf, ScoopieError> {
+        let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
+        let scoopie_home = PathBuf::from(scoopie_home);
+        let cache_dir = scoopie_home.join("cache");
+
+        match cache_dir.exists() {
+            true => Ok(cache_dir),
+            false => Err(ScoopieError::CacheDirUnavailable),
+        }
+    }
+
+    pub fn arch() -> Result<&'static str, ScoopieError> {
+        match env::consts::ARCH {
+            "x86" => Ok("32bit"),
+            "x86_64" => Ok("64bit"),
+            _ => Err(ScoopieError::UnknownArch),
+        }
     }
 }

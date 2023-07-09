@@ -20,8 +20,12 @@ pub enum ScoopieError {
     HomeDirUnavailable,
     #[error("Config directory unavailable")]
     ConfigDirUnavailable,
+    #[error("Cache directory unavailable")]
+    CacheDirUnavailable,
     #[error("Data directory unavailable")]
     DataDirUnavailable,
+    #[error("Repos directory unavailable")]
+    ReposDirUnavailable,
     #[error("Directory already exists: {0:?}")]
     DirAlreadyExists(PathBuf),
     #[error("While resolving absolute path")]
@@ -38,6 +42,8 @@ pub enum ScoopieError {
     PermissionDenied,
     #[error("{0:?} file not found")]
     FileNotExist(PathBuf),
+    #[error("Your CPU architecture is not supported")]
+    UnknownArch,
     #[error("Unknown")]
     Unknown,
 }
@@ -118,8 +124,6 @@ pub enum ConfigError {
 pub enum QueryError {
     #[error("Scoopie working directory unavailable")]
     ScoopieWorkingDirUnavailable,
-    #[error("Repos directory unavailable")]
-    ReposDirUnavailable,
     #[error("Invalid Query")]
     InvalidQuery,
     #[error("Failed to retrieve data")]

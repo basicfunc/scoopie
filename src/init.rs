@@ -63,6 +63,7 @@ impl InitCommand {
         let directories = vec![
             scoopie_path.clone(),
             scoopie_path.join("apps"),
+            scoopie_path.join("cache"),
             scoopie_path.join("persists"),
             scoopie_path.join("shims"),
         ];

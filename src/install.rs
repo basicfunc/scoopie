@@ -1,7 +1,7 @@
-mod sync;
-
 use argh::FromArgs;
-use sync::Sync;
+
+use crate::download::Downloader;
+use crate::sync::Sync;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Install specified app or Update app(s)
@@ -26,9 +26,14 @@ pub struct InstallCommand {
 impl InstallCommand {
     pub fn from(args: InstallCommand) {
         if args.sync {
-            match Sync::sync() {
-                Ok(_) => {}
+            match Sync::now() {
+                Ok(db) => println!("{:?}", db),
                 Err(e) => eprintln!("{e}"),
+            }
+        } else if args.download_only {
+            match args.app {
+                Some(app) => Downloader::from().unwrap().download(&app).unwrap(),
+                None => eprintln!("App argument required"),
             }
         } else {
             todo!()

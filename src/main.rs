@@ -1,4 +1,7 @@
+mod bucket;
 mod config;
+mod database;
+mod download;
 mod error;
 mod info;
 mod init;
@@ -8,6 +11,7 @@ mod locate;
 mod nuke;
 mod query;
 mod remove;
+mod sync;
 
 use argh::FromArgs;
 
