@@ -1,4 +1,4 @@
-# Scoopie
+# Scoopie (WIP)
 
 > If Scoop is vanilla, Scoopie will be tutti frutti.
 
