@@ -1,9 +1,15 @@
 [package]
 name = "scoopie"
+description = "Your favorite package manager"
 version = "0.1.0"
+authors = ["Rahul <basicfunc@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+readme = "README.md"
+repository = "https://github.com/basicfunc/scoopie"
+license = "MIT"
+license-file = "LICENSE"
+keywords = ["package", "package-manager"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 argh = "0.1.10"
