@@ -4,9 +4,22 @@ use rusqlite::Connection;
 
 use crate::{
     bucket::Bucket,
-    config::Config,
+    config::*,
     error::{DatabaseError, ScoopieError},
 };
+
+const TABLE_CREATE_STMT: &'static str = "CREATE TABLE IF NOT EXISTS manifests (
+                 app_name TEXT NOT NULL PRIMARY KEY,
+                 manifest TEXT
+             )";
+
+const FTS_TABLE_CREATE_STMT: &'static str =
+    "CREATE VIRTUAL TABLE IF NOT EXISTS manifests_fts USING FTS5(app_name, manifest)";
+
+const INSERT_STMT: &'static str = "INSERT INTO manifests (app_name, manifest) VALUES (?, ?)";
+
+const FTS_INSERT_STMT: &'static str =
+    "INSERT INTO manifests_fts(app_name, manifest) SELECT app_name, manifest FROM manifests";
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum DatabaseState {
@@ -22,7 +35,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn create(bucket: Bucket) -> Result<Database, ScoopieError> {
+    pub fn create(bucket: &Bucket) -> Result<Database, ScoopieError> {
         let name = &bucket.id.split("-").next().unwrap_or_default();
         let name = name.to_string();
 
@@ -42,35 +55,23 @@ impl Database {
         let conn = Connection::open(&db)
             .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS mainfests (
-                 app_name TEXT NOT NULL PRIMARY KEY,
-                 mainfest TEXT
-             )",
-            [],
-        )
-        .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+        conn.execute(TABLE_CREATE_STMT, [])
+            .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
         let mut stmt = conn
-            .prepare("INSERT INTO mainfests (app_name, mainfest) VALUES (?, ?)")
+            .prepare(INSERT_STMT)
             .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
-        for mainfest in bucket.mainfests {
-            stmt.execute(&[&mainfest.app_name, &mainfest.mainfest])
+        for manifest in &bucket.manifests {
+            stmt.execute(&[&manifest.0, &manifest.1])
                 .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
         }
 
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS mainfests_fts USING FTS5(app_name, mainfest)",
-            [],
-        )
-        .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+        conn.execute(FTS_TABLE_CREATE_STMT, [])
+            .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
-        conn.execute(
-            "INSERT INTO mainfests_fts(app_name, mainfest) SELECT app_name, mainfest FROM mainfests",
-            [],
-        )
-        .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
+        conn.execute(FTS_INSERT_STMT, [])
+            .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
 
         Ok(Database {
             name,

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, Value};
 
-use crate::{config::Config, error::ScoopieError, query::Query};
+use crate::{config::*, error::ScoopieError, query::Query};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DownloadEntry {
@@ -29,7 +29,7 @@ impl Downloader {
             .run(&format!("{app}"))?;
 
         for app in raw {
-            let mainfest: Value = from_str(&app.mainfest.mainfest)
+            let mainfest: Value = from_str(&app.manifest)
                 .map_err(|_| ScoopieError::Bucket(crate::error::BucketError::InvalidJSON))?;
 
             let entry = mainfest
@@ -46,7 +46,7 @@ impl Downloader {
 
             let entry: DownloadEntry = serde_json::from_value(entry.clone()).unwrap();
 
-            println!("Name: {}\n{:?}", app.mainfest.app_name, entry);
+            println!("Name: {}\n{:?}", app.app_name, entry);
         }
 
         Ok(())

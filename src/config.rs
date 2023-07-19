@@ -3,38 +3,27 @@ use std::{
     env,
     fs::{self, File},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 
 use crate::error::{ConfigError, ScoopieError};
 
-use dirs::{data_dir, home_dir};
+use dirs::home_dir;
 use rayon::prelude::*;
 use toml::Value;
 
 pub type RepoList = HashMap<String, String>;
 
-pub struct Config {
-    config: Value,
+pub trait FileLoader {
+    fn read_file(path: &Path) -> Result<String, ScoopieError>;
 }
 
-impl Config {
-    pub fn read() -> Result<Config, ScoopieError> {
-        let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
-        let config_dir = home_dir.join(".config");
+pub struct DefaultFileLoader;
 
-        if !config_dir.exists() {
-            return Err(ScoopieError::ConfigDirUnavailable);
-        }
-
-        let scoopie_config = config_dir.join("scoopie.toml");
-
-        if !scoopie_config.exists() {
-            return Err(ScoopieError::Config(ConfigError::ConfigNotFound));
-        }
-
-        let mut file = File::open(&scoopie_config).map_err(|e| match e.kind() {
+impl FileLoader for DefaultFileLoader {
+    fn read_file(path: &Path) -> Result<String, ScoopieError> {
+        let mut file = File::open(path).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => ScoopieError::Config(ConfigError::ConfigNotFound),
             std::io::ErrorKind::PermissionDenied => ScoopieError::PermissionDenied,
             _ => ScoopieError::Unknown,
@@ -51,13 +40,50 @@ impl Config {
                 _ => ScoopieError::Unknown,
             })?;
 
+        Ok(buffer)
+    }
+}
+
+pub trait ConfigReader {
+    fn read() -> Result<Self, ScoopieError>
+    where
+        Self: Sized;
+}
+
+pub struct Config {
+    config: Value,
+}
+
+impl ConfigReader for Config {
+    fn read() -> Result<Self, ScoopieError> {
+        let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
+        let config_dir = home_dir.join(".config");
+
+        if !config_dir.exists() {
+            return Err(ScoopieError::ConfigDirUnavailable);
+        }
+
+        let scoopie_config = config_dir.join("scoopie.toml");
+
+        if !scoopie_config.exists() {
+            return Err(ScoopieError::Config(ConfigError::ConfigNotFound));
+        }
+
+        let buffer = DefaultFileLoader::read_file(&scoopie_config)?;
+
         let toml: Value =
             toml::from_str(&buffer).map_err(|_| ScoopieError::Config(ConfigError::InvalidToml))?;
 
         Ok(Config { config: toml })
     }
+}
 
-    pub fn repos(&self) -> Result<RepoList, ScoopieError> {
+pub trait RepoProvider {
+    fn repos(&self) -> Result<RepoList, ScoopieError>;
+}
+
+impl RepoProvider for Config {
+    fn repos(&self) -> Result<RepoList, ScoopieError> {
         let repos = self
             .config
             .get("repos")
@@ -75,8 +101,14 @@ impl Config {
 
         Ok(repo_list)
     }
+}
 
-    pub fn latest_repos(&self) -> Result<Vec<PathBuf>, ScoopieError> {
+pub trait LatestRepoProvider {
+    fn latest_repos(&self) -> Result<Vec<PathBuf>, ScoopieError>;
+}
+
+impl LatestRepoProvider for Config {
+    fn latest_repos(&self) -> Result<Vec<PathBuf>, ScoopieError> {
         let repo_dir = Self::repos_dir()?;
         let repos = self
             .config
@@ -117,10 +149,18 @@ impl Config {
 
         Ok(latest_files)
     }
+}
 
-    pub fn repos_dir() -> Result<PathBuf, ScoopieError> {
-        let data_dir = data_dir().ok_or(ScoopieError::DataDirUnavailable)?;
-        let repos_dir = data_dir.join(r"scoopie\repos");
+pub trait DirectoryProvider {
+    fn repos_dir() -> Result<PathBuf, ScoopieError>;
+    fn cache_dir() -> Result<PathBuf, ScoopieError>;
+}
+
+impl DirectoryProvider for Config {
+    fn repos_dir() -> Result<PathBuf, ScoopieError> {
+        let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
+        let scoopie_home = PathBuf::from(scoopie_home);
+        let repos_dir = scoopie_home.join("buckets");
 
         match repos_dir.exists() {
             true => Ok(repos_dir),
@@ -128,7 +168,7 @@ impl Config {
         }
     }
 
-    pub fn cache_dir() -> Result<PathBuf, ScoopieError> {
+    fn cache_dir() -> Result<PathBuf, ScoopieError> {
         let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
         let scoopie_home = PathBuf::from(scoopie_home);
         let cache_dir = scoopie_home.join("cache");
@@ -138,8 +178,14 @@ impl Config {
             false => Err(ScoopieError::CacheDirUnavailable),
         }
     }
+}
 
-    pub fn arch() -> Result<&'static str, ScoopieError> {
+pub trait ArchProvider {
+    fn arch() -> Result<&'static str, ScoopieError>;
+}
+
+impl ArchProvider for Config {
+    fn arch() -> Result<&'static str, ScoopieError> {
         match env::consts::ARCH {
             "x86" => Ok("32bit"),
             "x86_64" => Ok("64bit"),

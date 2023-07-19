@@ -1,12 +1,11 @@
 use argh::FromArgs;
-use dirs::{data_dir, home_dir};
+use dirs::home_dir;
 use std::{
     fmt::Display,
     fs::{DirBuilder, File},
     io::Write,
     path::{Path, PathBuf},
     process::Command,
-    vec,
 };
 use toml::Value;
 
@@ -30,7 +29,6 @@ main = "https://github.com/ScoopInstaller/Main"
 #[derive(Debug)]
 pub struct ScoopieDirStats {
     home: PathBuf,
-    data: PathBuf,
     config: PathBuf,
 }
 
@@ -38,9 +36,8 @@ impl Display for ScoopieDirStats {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nData at: {}\nConfig at: {}",
+            "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nConfig at: {}",
             self.home.display(),
-            self.data.display(),
             self.config.display()
         )
     }
@@ -63,6 +60,7 @@ impl InitCommand {
         let directories = vec![
             scoopie_path.clone(),
             scoopie_path.join("apps"),
+            scoopie_path.join("buckets"),
             scoopie_path.join("cache"),
             scoopie_path.join("persists"),
             scoopie_path.join("shims"),
@@ -90,22 +88,10 @@ impl InitCommand {
             write_toml(&scoopie_config, toml.as_bytes())?;
         }
 
-        let data_dir = data_dir().ok_or(ScoopieError::DataDirUnavailable)?;
-        let scoopie_data_dir = data_dir.join("scoopie");
-
-        if !scoopie_data_dir.exists() {
-            let data_dirs = vec![scoopie_data_dir.clone(), scoopie_data_dir.join("repos")];
-
-            data_dirs
-                .iter()
-                .try_for_each(|path| create_directory(path))?;
-        }
-
         set_environment_variable("SCOOPIE_HOME", &scoopie_path.display().to_string())?;
 
         Ok(ScoopieDirStats {
             home: scoopie_path,
-            data: scoopie_data_dir,
             config: scoopie_config,
         })
     }

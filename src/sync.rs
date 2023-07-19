@@ -3,7 +3,7 @@ use tempfile::tempdir;
 
 use crate::{
     bucket::Bucket,
-    config::Config,
+    config::*,
     database::Database,
     error::{ScoopieError, SyncError},
 };
@@ -19,7 +19,10 @@ impl Sync {
 
         repos
             .par_iter()
-            .map(|(name, url)| Database::create(Bucket::fetch(name, url, &temp_dir.join(name))?))
+            .map(|(name, url)| Bucket::fetch(name, url, &temp_dir.join(name)))
+            .collect::<Result<Vec<_>, _>>()?
+            .par_iter()
+            .map(|bucket| Database::create(bucket))
             .collect()
     }
 }

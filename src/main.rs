@@ -47,25 +47,29 @@ enum Command {
 fn main() {
     let cmd: Scoopie = argh::from_env();
     let cmd = cmd.cmd;
-    println!("{:?}", cmd);
+    // println!("{:?}", cmd);
 
     match cmd {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
         Command::Query(query) => match QueryCommand::from(query) {
-            Ok(result) => println!("{:?}", result),
-            Err(e) => eprintln!("{e:?}"),
+            Ok(results) => {
+                for result in results {
+                    println!("{result}");
+                }
+            }
+            Err(e) => eprintln!("{e}"),
         },
         Command::Locate(_) => todo!(),
         Command::Info(_) => todo!(),
         Command::Init(config) => match InitCommand::from(config) {
             Ok(x) => println!("{x}"),
-            Err(e) => eprintln!("{e:?}"),
+            Err(e) => eprintln!("{e}"),
         },
         Command::List(_) => todo!(),
         Command::Nuke(_) => match NukeCommand::from() {
             Ok(_) => println!("👋🏻 Goodbye, Scoopie has been deleted!"),
-            Err(e) => eprintln!("{e:?}"),
+            Err(e) => eprintln!("{e}"),
         },
     }
 }

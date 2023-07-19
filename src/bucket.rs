@@ -5,22 +5,25 @@ use serde_json::Value;
 
 use crate::error::{BucketError, ScoopieError, SyncError};
 
-#[derive(Debug, Default, Clone)]
-pub struct MainfestEntry {
-    pub app_name: String,
-    pub mainfest: String,
-}
+pub type BucketResult = Result<Bucket, ScoopieError>;
 
 #[derive(Debug, Default)]
 pub struct Bucket {
     pub id: String,
-    pub mainfests: Vec<MainfestEntry>,
+    pub manifests: Vec<(String, String)>,
 }
 
 impl Bucket {
-    pub fn fetch(name: &str, url: &String, path: &PathBuf) -> Result<Bucket, ScoopieError> {
+    pub fn fetch<N, U, P>(name: N, url: U, path: P) -> BucketResult
+    where
+        N: Into<String>,
+        U: Into<String>,
+        P: Into<PathBuf>,
+    {
+        let path = path.into();
+
         let repo = RepoBuilder::new()
-            .clone(url, &path)
+            .clone(&url.into(), &path)
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
 
         let head = repo
@@ -32,10 +35,10 @@ impl Bucket {
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetCommit))?
             .id();
 
-        let id = format!("{}-{}", name, commit_id);
+        let id = format!("{}-{}", name.into(), commit_id);
         let mut bucket = Bucket {
             id,
-            mainfests: vec![],
+            manifests: vec![],
         };
 
         let bucket_path = path.join("bucket");
@@ -53,18 +56,17 @@ impl Bucket {
             let ext = file_path.extension();
 
             if ext == Some(OsStr::new("json")) && file_path.is_file() {
-                let app_name = file_path.file_stem().unwrap_or(file_path.as_os_str());
-                let app_name = app_name.to_string_lossy().to_string();
+                if let Some(app_name) = file_path.file_stem().and_then(|stem| stem.to_str()) {
+                    let file_content = fs::read_to_string(&file_path)
+                        .map_err(|_| ScoopieError::Bucket(BucketError::MainfestRead))?;
 
-                let file_content = fs::read_to_string(&file_path)
-                    .map_err(|_| ScoopieError::Bucket(BucketError::MainfestRead))?;
+                    let json: Value = serde_json::from_str(&file_content)
+                        .map_err(|_| ScoopieError::Bucket(BucketError::InvalidJSON))?;
 
-                let json: Value = serde_json::from_str(&file_content)
-                    .map_err(|_| ScoopieError::Bucket(BucketError::InvalidJSON))?;
+                    let mainfest = json.to_string();
 
-                let mainfest = json.to_string();
-
-                bucket.mainfests.push(MainfestEntry { app_name, mainfest });
+                    bucket.manifests.push((app_name.to_owned(), mainfest));
+                }
             }
         }
 

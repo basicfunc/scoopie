@@ -1,19 +1,22 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, write};
 
 use argh::FromArgs;
 use rayon::prelude::*;
 use rusqlite::{params, Connection, Error, Row};
-use serde::{Deserialize, Serialize};
 use serde_json::{self, from_str, Value};
 
 use crate::{
-    bucket::MainfestEntry,
-    config::Config,
+    config::*,
     error::{DatabaseError, QueryError, ScoopieError},
 };
 
+const APP_QUERY: &'static str =
+    "SELECT app_name, manifest FROM manifests_fts WHERE app_name MATCH ? COLLATE nocase";
+const FTS_QUERY: &'static str =
+    "SELECT app_name, manifest FROM manifests_fts WHERE manifest MATCH ? COLLATE nocase";
+
 #[derive(FromArgs, PartialEq, Debug)]
-/// Search available apps (supports full-text search)
+/// Search available apps from buckets (supports full-text search)
 #[argh(subcommand, name = "query")]
 pub struct QueryCommand {
     #[argh(positional)]
@@ -22,20 +25,16 @@ pub struct QueryCommand {
 
 impl QueryCommand {
     pub fn from(query: QueryCommand) -> Result<Vec<AppInfo>, ScoopieError> {
-        let q = query.query;
-        let q = q.trim();
+        let q = query.query.trim();
 
         match q.contains(" ") {
-            true => Self::full_text_search(q),
+            true => Self::query_fts(q),
             false => Self::query_app(q),
         }
     }
 
-    fn full_text_search(query: &str) -> Result<Vec<AppInfo>, ScoopieError> {
-        let results = Query::builder(
-            "SELECT app_name, mainfest FROM mainfests_fts WHERE mainfest MATCH (?)",
-        )?
-        .run(query)?;
+    fn query_app(app_name: &str) -> Result<Vec<AppInfo>, ScoopieError> {
+        let results = Query::builder(APP_QUERY)?.run(&format!("{app_name}*"))?;
 
         results
             .par_iter()
@@ -43,10 +42,14 @@ impl QueryCommand {
             .collect()
     }
 
-    fn query_app(app_name: &str) -> Result<Vec<AppInfo>, ScoopieError> {
-        let results =
-            Query::builder("SELECT app_name, mainfest FROM mainfests WHERE app_name LIKE ?")?
-                .run(&format!("%{app_name}%"))?;
+    fn query_fts(query: &str) -> Result<Vec<AppInfo>, ScoopieError> {
+        let query = query
+            .split_whitespace()
+            .map(|term| format!("{term}*"))
+            .collect::<Vec<String>>()
+            .join(" AND ");
+
+        let results = Query::builder(FTS_QUERY)?.run(&query)?;
 
         results
             .par_iter()
@@ -55,49 +58,60 @@ impl QueryCommand {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppInfo {
     repo_name: String,
     app_name: String,
     version: String,
     description: String,
-    binaries: String,
 }
 
 impl AppInfo {
-    fn from(raw: &RawData) -> Result<Self, ScoopieError> {
-        let repo_name = raw.repo_name.clone();
-        let app_name = raw.mainfest.app_name.clone();
+    fn from(data: &Data) -> Result<Self, ScoopieError> {
+        let repo_name = data.repo_name.clone();
+        let app_name = data.app_name.clone();
 
-        let mainfest: Value = from_str(&raw.mainfest.mainfest)
+        let manifest: Value = from_str(&data.manifest)
             .map_err(|_| ScoopieError::Query(QueryError::InavlidJSONData))?;
 
-        let description = mainfest
+        let description = manifest
             .get("description")
-            .unwrap_or(&Value::Null)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
             .to_string();
 
-        let binaries = mainfest.get("bin").unwrap_or(&Value::Null).to_string();
-        let version = mainfest.get("version").unwrap_or(&Value::Null).to_string();
+        let version = manifest
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
 
         Ok(Self {
             repo_name,
             app_name,
             version,
             description,
-            binaries,
         })
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RawData {
-    pub repo_name: String,
-    pub mainfest: MainfestEntry,
+impl std::fmt::Display for AppInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}/{} {}\n  {}\n",
+            self.app_name, self.repo_name, self.version, self.description
+        )
+    }
 }
 
-impl RawData {
-    fn new(repo: &PathBuf, app_name: String, mainfest: String) -> Self {
+pub struct Data {
+    pub repo_name: String,
+    pub app_name: String,
+    pub manifest: String,
+}
+
+impl Data {
+    fn new(repo: &PathBuf, app_name: String, manifest: String) -> Self {
         let db_name = &repo
             .file_name()
             .unwrap_or_default()
@@ -105,11 +119,10 @@ impl RawData {
             .to_string();
         let repo_name = db_name.split('-').next().unwrap_or_default().to_string();
 
-        let mainfest = MainfestEntry { app_name, mainfest };
-
         Self {
             repo_name,
-            mainfest,
+            app_name,
+            manifest,
         }
     }
 }
@@ -122,23 +135,24 @@ pub struct Query {
 impl Query {
     pub fn builder(stmt: &str) -> Result<Query, ScoopieError> {
         let repos = Config::read()?.latest_repos()?;
+
         Ok(Self {
             repos,
             stmt: stmt.into(),
         })
     }
 
-    pub fn run(&self, params: &str) -> Result<Vec<RawData>, ScoopieError> {
-        let fetch_row = |row: &Row| -> Result<MainfestEntry, Error> {
+    pub fn run(&self, params: &str) -> Result<Vec<Data>, ScoopieError> {
+        let fetch_row = |row: &Row| -> Result<(String, String), Error> {
             let app_name = row.get(0)?;
-            let mainfest = row.get(1)?;
-            Ok(MainfestEntry { app_name, mainfest })
+            let manifest = row.get(1)?;
+            Ok((app_name, manifest))
         };
 
-        let results: Result<Vec<Vec<RawData>>, ScoopieError> = self
+        let results: Result<Vec<Vec<Data>>, ScoopieError> = self
             .repos
             .par_iter()
-            .map(|repo| -> Result<Vec<RawData>, ScoopieError> {
+            .map(|repo| -> Result<Vec<Data>, ScoopieError> {
                 let conn = Connection::open(&repo)
                     .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
@@ -151,20 +165,19 @@ impl Query {
                     .map_err(|_| ScoopieError::Query(QueryError::FailedToQuery))?;
 
                 rows.into_iter()
-                    .map(|row| -> Result<RawData, ScoopieError> {
+                    .map(|row| -> Result<Data, ScoopieError> {
                         let row =
                             row.map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))?;
 
-                        let app_name = row.app_name;
-                        let mainfest = row.mainfest;
+                        let app_name = row.0;
+                        let manifest = row.1;
 
-                        Ok(RawData::new(&repo, app_name, mainfest))
+                        Ok(Data::new(&repo, app_name, manifest))
                     })
                     .collect()
             })
             .collect();
 
-        let results: Vec<Vec<RawData>> = results?;
-        Ok(results.concat())
+        results.and_then(|results| Ok(results.into_iter().flatten().collect()))
     }
 }

@@ -16,11 +16,7 @@ impl NukeCommand {
         let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
         let scoopie_home = PathBuf::from(scoopie_home);
 
-        let data_dir = data_dir().ok_or(ScoopieError::DataDirUnavailable)?;
-        let scoopie_data_dir = data_dir.join("scoopie");
-
         rmdir(&scoopie_home)?;
-        rmdir(&scoopie_data_dir)?;
         remove_env_var("SCOOPIE_HOME")?;
 
         Ok(())
