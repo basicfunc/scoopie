@@ -6,7 +6,6 @@ authors = ["Rahul <basicfunc@gmail.com>"]
 edition = "2021"
 readme = "README.md"
 repository = "https://github.com/basicfunc/scoopie"
-license = "MIT"
 license-file = "LICENSE"
 keywords = ["package", "package-manager"]
 categories = ["command-line-utilities"]
