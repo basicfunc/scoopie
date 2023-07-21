@@ -26,7 +26,7 @@ impl Downloader {
 
     pub fn download(&self, app: &str) -> Result<(), ScoopieError> {
         let raw = Query::builder("SELECT app_name, mainfest FROM mainfests WHERE app_name LIKE ?")?
-            .run(&format!("{app}"))?;
+            .run(app)?;
 
         for app in raw {
             let mainfest: Value = from_str(&app.manifest)

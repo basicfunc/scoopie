@@ -22,7 +22,7 @@ pub struct InitCommand {
 }
 
 const DEFAULT_TOML: &'static str = r#"
-[repos]
+[buckets]
 main = "https://github.com/ScoopInstaller/Main"
 "#;
 

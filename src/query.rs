@@ -1,4 +1,8 @@
-use std::{path::PathBuf, write};
+use std::{
+    fmt::{self, Display},
+    path::PathBuf,
+    write,
+};
 
 use argh::FromArgs;
 use rayon::prelude::*;
@@ -34,27 +38,17 @@ impl QueryCommand {
     }
 
     fn query_app(app_name: &str) -> Result<Vec<AppInfo>, ScoopieError> {
-        let results = Query::builder(APP_QUERY)?.run(&format!("{app_name}*"))?;
-
-        results
-            .par_iter()
-            .map(|raw_result| AppInfo::from(raw_result))
-            .collect()
+        let results = Query::builder(APP_QUERY)?.run(format!("{app_name}*"))?;
+        results.par_iter().map(|d| d.try_into()).collect()
     }
 
-    fn query_fts(query: &str) -> Result<Vec<AppInfo>, ScoopieError> {
-        let query = query
+    fn query_fts(terms: &str) -> Result<Vec<AppInfo>, ScoopieError> {
+        let query = terms
             .split_whitespace()
-            .map(|term| format!("{term}*"))
-            .collect::<Vec<String>>()
+            .collect::<Vec<&str>>()
             .join(" AND ");
-
-        let results = Query::builder(FTS_QUERY)?.run(&query)?;
-
-        results
-            .par_iter()
-            .map(|raw_result| AppInfo::from(raw_result))
-            .collect()
+        let results = Query::builder(FTS_QUERY)?.run(format!("{query}*"))?;
+        results.par_iter().map(|d| d.try_into()).collect()
     }
 }
 
@@ -65,12 +59,14 @@ pub struct AppInfo {
     description: String,
 }
 
-impl AppInfo {
-    fn from(data: &Data) -> Result<Self, ScoopieError> {
-        let repo_name = data.repo_name.clone();
-        let app_name = data.app_name.clone();
+impl TryFrom<&Data> for AppInfo {
+    type Error = ScoopieError;
 
-        let manifest: Value = from_str(&data.manifest)
+    fn try_from(value: &Data) -> Result<Self, ScoopieError> {
+        let repo_name = value.repo_name.clone();
+        let app_name = value.app_name.clone();
+
+        let manifest: Value = from_str(&value.manifest)
             .map_err(|_| ScoopieError::Query(QueryError::InavlidJSONData))?;
 
         let description = manifest
@@ -94,11 +90,11 @@ impl AppInfo {
     }
 }
 
-impl std::fmt::Display for AppInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for AppInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{}/{} {}\n  {}\n",
+            "\n{}/{} {}\n  {}",
             self.app_name, self.repo_name, self.version, self.description
         )
     }
@@ -133,8 +129,11 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn builder(stmt: &str) -> Result<Query, ScoopieError> {
-        let repos = Config::read()?.latest_repos()?;
+    pub fn builder<T>(stmt: T) -> Result<Query, ScoopieError>
+    where
+        T: Into<String>,
+    {
+        let repos = Config::read()?.latest_buckets()?;
 
         Ok(Self {
             repos,
@@ -142,41 +141,45 @@ impl Query {
         })
     }
 
-    pub fn run(&self, params: &str) -> Result<Vec<Data>, ScoopieError> {
+    pub fn run<T>(&self, params: T) -> Result<Vec<Data>, ScoopieError>
+    where
+        T: Into<String>,
+    {
+        let params = params.into();
+
         let fetch_row = |row: &Row| -> Result<(String, String), Error> {
             let app_name = row.get(0)?;
             let manifest = row.get(1)?;
             Ok((app_name, manifest))
         };
 
-        let results: Result<Vec<Vec<Data>>, ScoopieError> = self
-            .repos
-            .par_iter()
-            .map(|repo| -> Result<Vec<Data>, ScoopieError> {
-                let conn = Connection::open(&repo)
-                    .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
+        let process_row =
+            |repo: &PathBuf, row: Result<(String, String), Error>| -> Result<Data, ScoopieError> {
+                let row = row.map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))?;
+                let app_name = row.0;
+                let manifest = row.1;
+                Ok(Data::new(repo, app_name, manifest))
+            };
 
-                let mut stmt = conn
-                    .prepare(&self.stmt)
-                    .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
+        let fetch_data = |repo: &PathBuf| -> Result<Vec<Data>, ScoopieError> {
+            let conn = Connection::open(repo)
+                .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
-                let rows = stmt
-                    .query_map(params![params], fetch_row)
-                    .map_err(|_| ScoopieError::Query(QueryError::FailedToQuery))?;
+            let mut stmt = conn
+                .prepare(&self.stmt)
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
-                rows.into_iter()
-                    .map(|row| -> Result<Data, ScoopieError> {
-                        let row =
-                            row.map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))?;
+            let rows = stmt
+                .query_map(params![params], fetch_row)
+                .map_err(|_| ScoopieError::Query(QueryError::FailedToQuery))?;
 
-                        let app_name = row.0;
-                        let manifest = row.1;
+            rows.into_iter()
+                .map(|row| process_row(&repo, row))
+                .collect()
+        };
 
-                        Ok(Data::new(&repo, app_name, manifest))
-                    })
-                    .collect()
-            })
-            .collect();
+        let results: Result<Vec<Vec<Data>>, ScoopieError> =
+            self.repos.par_iter().map(fetch_data).collect();
 
         results.and_then(|results| Ok(results.into_iter().flatten().collect()))
     }

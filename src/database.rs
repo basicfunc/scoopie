@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, write};
 
 use rusqlite::Connection;
 
@@ -34,6 +34,24 @@ pub struct Database {
     status: DatabaseState,
 }
 
+impl std::fmt::Display for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let status = if self.status == DatabaseState::UpToDate {
+            "up-to-date"
+        } else {
+            "created"
+        };
+
+        write!(
+            f,
+            "Bucket: {} is {} at {}",
+            self.name,
+            status,
+            self.path.display()
+        )
+    }
+}
+
 impl Database {
     pub fn create(bucket: &Bucket) -> Result<Database, ScoopieError> {
         let name = &bucket.id.split("-").next().unwrap_or_default();
@@ -42,7 +60,7 @@ impl Database {
         let mut repo = PathBuf::from(&bucket.id);
         repo.set_extension("db");
 
-        let db = Config::repos_dir()?.join(&repo);
+        let db = Config::buckets_dir()?.join(&repo);
 
         if db.exists() {
             return Ok(Database {

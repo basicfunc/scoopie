@@ -1,3 +1,5 @@
+use std::eprintln;
+
 use argh::FromArgs;
 
 use crate::download::Downloader;
@@ -26,10 +28,10 @@ pub struct InstallCommand {
 impl InstallCommand {
     pub fn from(args: InstallCommand) {
         if args.sync {
-            match Sync::now() {
-                Ok(db) => println!("{:?}", db),
-                Err(e) => eprintln!("{e}"),
-            }
+            Sync::now().map_or_else(
+                |e| eprintln!("{e}"),
+                |buckets| buckets.iter().for_each(|b| println!("{b}")),
+            );
         } else if args.download_only {
             match args.app {
                 Some(app) => Downloader::from().unwrap().download(&app).unwrap(),

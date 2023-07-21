@@ -22,10 +22,14 @@ pub enum ScoopieError {
     ConfigDirUnavailable,
     #[error("Cache directory unavailable")]
     CacheDirUnavailable,
-    #[error("Data directory unavailable")]
-    DataDirUnavailable,
     #[error("Repos directory unavailable")]
-    ReposDirUnavailable,
+    BucketsDirUnavailable,
+    #[error("Apps directory unavailable")]
+    AppsDirUnavailable,
+    #[error("Shims directory unavailable")]
+    ShimsDirUnavailable,
+    #[error("Persist directory unavailable")]
+    PersistDirUnavailable,
     #[error("Directory already exists: {0:?}")]
     DirAlreadyExists(PathBuf),
     #[error("While resolving absolute path")]
@@ -70,12 +74,6 @@ pub enum DatabaseError {
     FailedToMkStmt,
     #[error("Failed to insert mainfest to database")]
     FailedInsertion,
-    #[error("Failed to set pragmas for database optimizations")]
-    FailedToSetPragma,
-    #[error("Failed to begin transction")]
-    FailedToBeginTransaction,
-    #[error("Failed to commit transction")]
-    FailedToCommitTransaction,
 }
 
 #[derive(Debug, Error)]
@@ -112,20 +110,12 @@ pub enum ConfigError {
     UnexpectedEof,
     #[error("Invalid TOML")]
     InvalidToml,
-    #[error("No repo")]
-    NoRepo,
-    #[error("Unable to get entry in repos dir")]
-    UnableToGetEntry,
-    #[error("Unable to get metadata of database files")]
-    UnableToGetMetadata,
+    #[error("No buckets configured in config")]
+    NoBucketsConfigured,
 }
 
 #[derive(Debug, Error)]
 pub enum QueryError {
-    #[error("Scoopie working directory unavailable")]
-    ScoopieWorkingDirUnavailable,
-    #[error("Invalid Query")]
-    InvalidQuery,
     #[error("Failed to retrieve data")]
     FailedToRetrieveData,
     #[error("Found invalid JSON while retrieving data")]

@@ -13,7 +13,7 @@ pub struct Sync {}
 impl Sync {
     pub fn now() -> Result<Vec<Database>, ScoopieError> {
         let config = Config::read()?;
-        let repos = config.repos()?;
+        let repos = config.known_buckets()?;
         let temp_dir = tempdir().map_err(|_| ScoopieError::Sync(SyncError::UnableToMkTmpDir))?;
         let temp_dir = temp_dir.path();
 

@@ -1,5 +1,4 @@
 use argh::FromArgs;
-use dirs::data_dir;
 use std::{env, fs::remove_dir_all, path::PathBuf, process::Command};
 
 use crate::error::ScoopieError;
