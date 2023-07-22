@@ -1,7 +1,5 @@
 mod bucket;
 mod config;
-mod database;
-mod download;
 mod error;
 mod info;
 mod init;
@@ -11,7 +9,6 @@ mod locate;
 mod nuke;
 mod query;
 mod remove;
-mod sync;
 
 use argh::FromArgs;
 
@@ -46,18 +43,13 @@ enum Command {
 
 fn main() {
     let cmd: Scoopie = argh::from_env();
-    let cmd = cmd.cmd;
-    // println!("{:?}", cmd);
+    println!("{:?}", cmd);
 
-    match cmd {
+    match cmd.cmd {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
         Command::Query(query) => match QueryCommand::from(query) {
-            Ok(results) => {
-                for result in results {
-                    println!("{result}");
-                }
-            }
+            Ok(results) => results.iter().for_each(|f| println!("{f}")),
             Err(e) => eprintln!("{e}"),
         },
         Command::Locate(_) => todo!(),

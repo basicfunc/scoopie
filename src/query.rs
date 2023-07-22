@@ -1,12 +1,12 @@
 use std::{
     fmt::{self, Display},
     path::PathBuf,
-    write,
+    vec, write,
 };
 
 use argh::FromArgs;
 use rayon::prelude::*;
-use rusqlite::{params, Connection, Error, Row};
+use rusqlite::{params, Connection};
 use serde_json::{self, from_str, Value};
 
 use crate::{
@@ -39,7 +39,7 @@ impl QueryCommand {
 
     fn query_app(app_name: &str) -> Result<Vec<AppInfo>, ScoopieError> {
         let results = Query::builder(APP_QUERY)?.run(format!("{app_name}*"))?;
-        results.par_iter().map(|d| d.try_into()).collect()
+        results.par_iter().map(AppInfo::try_from).collect()
     }
 
     fn query_fts(terms: &str) -> Result<Vec<AppInfo>, ScoopieError> {
@@ -48,7 +48,7 @@ impl QueryCommand {
             .collect::<Vec<&str>>()
             .join(" AND ");
         let results = Query::builder(FTS_QUERY)?.run(format!("{query}*"))?;
-        results.par_iter().map(|d| d.try_into()).collect()
+        results.par_iter().map(AppInfo::try_from).collect()
     }
 }
 
@@ -124,7 +124,7 @@ impl Data {
 }
 
 pub struct Query {
-    repos: Vec<PathBuf>,
+    buckets: Vec<PathBuf>,
     stmt: String,
 }
 
@@ -133,10 +133,10 @@ impl Query {
     where
         T: Into<String>,
     {
-        let repos = Config::read()?.latest_buckets()?;
+        let buckets = Config::read()?.latest_buckets()?;
 
         Ok(Self {
-            repos,
+            buckets,
             stmt: stmt.into(),
         })
     }
@@ -147,21 +147,7 @@ impl Query {
     {
         let params = params.into();
 
-        let fetch_row = |row: &Row| -> Result<(String, String), Error> {
-            let app_name = row.get(0)?;
-            let manifest = row.get(1)?;
-            Ok((app_name, manifest))
-        };
-
-        let process_row =
-            |repo: &PathBuf, row: Result<(String, String), Error>| -> Result<Data, ScoopieError> {
-                let row = row.map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))?;
-                let app_name = row.0;
-                let manifest = row.1;
-                Ok(Data::new(repo, app_name, manifest))
-            };
-
-        let fetch_data = |repo: &PathBuf| -> Result<Vec<Data>, ScoopieError> {
+        let query_buckets = |repo: &PathBuf| -> Result<Vec<Data>, ScoopieError> {
             let conn = Connection::open(repo)
                 .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
@@ -169,18 +155,16 @@ impl Query {
                 .prepare(&self.stmt)
                 .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
-            let rows = stmt
-                .query_map(params![params], fetch_row)
-                .map_err(|_| ScoopieError::Query(QueryError::FailedToQuery))?;
-
-            rows.into_iter()
-                .map(|row| process_row(&repo, row))
-                .collect()
+            stmt.query_map(params![params], |row| {
+                Ok(Data::new(repo, row.get(0)?, row.get(1)?))
+            })
+            .and_then(Iterator::collect::<Result<Vec<_>, _>>)
+            .map_err(|_| ScoopieError::Query(QueryError::FailedToRetrieveData))
         };
 
-        let results: Result<Vec<Vec<Data>>, ScoopieError> =
-            self.repos.par_iter().map(fetch_data).collect();
-
-        results.and_then(|results| Ok(results.into_iter().flatten().collect()))
+        self.buckets.iter().try_fold(Vec::new(), |mut acc, b| {
+            acc.extend(query_buckets(b)?);
+            Ok(acc)
+        })
     }
 }
