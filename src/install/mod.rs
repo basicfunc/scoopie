@@ -3,7 +3,7 @@ mod sync;
 
 use argh::FromArgs;
 
-use download::Downloader;
+use download::DownloadEntry;
 use sync::Sync;
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -35,7 +35,7 @@ impl InstallCommand {
             );
         } else if args.download_only {
             match args.app {
-                Some(app) => Downloader::from().unwrap().download(&app).unwrap(),
+                Some(app) => println!("{:#?}", DownloadEntry::try_from(&app)),
                 None => eprintln!("App argument required"),
             }
         } else {
