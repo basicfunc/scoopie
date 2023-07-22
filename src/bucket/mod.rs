@@ -60,7 +60,7 @@ impl std::fmt::Display for Bucket {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Entry {
     pub app_name: String,
     pub manifest: Manifest,

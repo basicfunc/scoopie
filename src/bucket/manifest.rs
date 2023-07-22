@@ -3,24 +3,24 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::error::{BucketError, ScoopieError};
+use crate::error::*;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-/// This strictly follows Scoop's convention for app manifests, which could be found here: https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests
+#[derive(Clone, Deserialize, Debug, Default, Serialize)]
+/// This strictly follows Scoop's convention for app manifests, which could be found at: https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests
 pub struct Manifest {
     // Required Properties
     pub version: String,
     pub description: String,
     pub homepage: String,
-    pub license: Value, // TODO: Implement as individual struct to support identifier, url, etc.
+    pub license: Value,
     // Optional Properties
     pub bin: Option<Value>,
     pub extract_dir: Option<Value>,
     #[serde(rename = "##")]
     pub comments: Option<Value>,
-    pub architecture: Option<Value>, // TODO: to implement as individual struct so that it contains related properties.
-    pub autoupdate: Option<Value>, // It is used by scoop to check for autoupdates which is currrently out-of-scope for Scoopie.
-    pub checkver: Option<Value>, // It is used by scoop to check for updated versions which is currrently out-of-scope for Scoopie.
+    pub architecture: Option<Architecture>,
+    pub autoupdate: Option<Value>, // It is used by scoop to check for autoupdates, currrently out-of-scope for Scoopie.
+    pub checkver: Option<Value>, // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
     pub depends: Option<Value>,
     pub suggest: Option<Value>,
     pub env_add_path: Option<Value>,
@@ -52,4 +52,19 @@ impl TryInto<String> for Manifest {
     fn try_into(self) -> Result<String, Self::Error> {
         serde_json::to_string(&self).map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))
     }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Architecture {
+    #[serde(rename = "64bit")]
+    bit_64: Option<Links>,
+    #[serde(rename = "32bit")]
+    bit_32: Option<Links>,
+    arm64: Option<Links>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Links {
+    url: Option<Value>,
+    hash: Option<Value>,
 }
