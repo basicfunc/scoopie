@@ -16,6 +16,8 @@ pub enum ScoopieError {
     Config(ConfigError),
     #[error("{0}")]
     Query(QueryError),
+    #[error("{0}")]
+    Find(FindError),
     #[error("Home directory unavailable")]
     HomeDirUnavailable,
     #[error("Config directory unavailable")]
@@ -50,6 +52,14 @@ pub enum ScoopieError {
     UnknownArch,
     #[error("Unknown")]
     Unknown,
+}
+
+#[derive(Debug, Error)]
+pub enum FindError {
+    #[error("App: \"{0}\" is not available in configured repos.")]
+    NoAppFound(String),
+    #[error("App: \"{0}\" is not available in {1} repo.")]
+    NoAppFoundInBucket(String, String),
 }
 
 #[derive(Debug, Error)]
