@@ -13,10 +13,11 @@ use dirs::home_dir;
 use rayon::prelude::*;
 use toml::Value;
 
-pub type RepoList = HashMap<String, String>;
+type BucketsList = HashMap<String, String>;
 
 pub trait Reader {
-    fn read() -> Result<Self, ScoopieError>
+    type Error;
+    fn read() -> Result<Self, Self::Error>
     where
         Self: Sized;
 }
@@ -26,7 +27,9 @@ pub struct Config {
 }
 
 impl Reader for Config {
-    fn read() -> Result<Self, ScoopieError> {
+    type Error = ScoopieError;
+
+    fn read() -> Result<Self, Self::Error> {
         let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
         let config_dir = home_dir.join(".config");
 
@@ -65,19 +68,20 @@ impl Reader for Config {
 }
 
 pub trait Buckets {
-    fn known_buckets(&self) -> Result<RepoList, ScoopieError>;
+    fn known_buckets(&self) -> Result<BucketsList, ScoopieError>;
     fn latest_buckets(&self) -> Result<Vec<PathBuf>, ScoopieError>;
 }
 
 impl Buckets for Config {
-    fn known_buckets(&self) -> Result<RepoList, ScoopieError> {
+    fn known_buckets(&self) -> Result<BucketsList, ScoopieError> {
         let repos = self
             .config
             .get("buckets")
             .ok_or(ScoopieError::Config(ConfigError::NoBucketsConfigured))?;
 
-        let mut repo_list = RepoList::new();
+        let mut repo_list = BucketsList::new();
 
+        // TODO: Improve for syntax errors
         if let Value::Table(table) = repos {
             for (key, value) in table.iter() {
                 if let Value::String(str_val) = value {
@@ -149,57 +153,47 @@ impl DefaultDirs for Config {
     }
 
     fn buckets_dir() -> Result<PathBuf, ScoopieError> {
-        let scoopie_home = Self::home_dir()?;
-        let buckets_dir = scoopie_home.join("buckets");
+        let buckets_dir = Self::home_dir()?.join("buckets");
 
-        if buckets_dir.exists() {
-            Ok(buckets_dir)
-        } else {
-            Err(ScoopieError::BucketsDirUnavailable)
+        match buckets_dir.exists() {
+            true => Ok(buckets_dir),
+            false => Err(ScoopieError::BucketsDirUnavailable),
         }
     }
 
     fn cache_dir() -> Result<PathBuf, ScoopieError> {
-        let scoopie_home = Self::home_dir()?;
-        let cache_dir = scoopie_home.join("cache");
+        let cache_dir = Self::home_dir()?.join("cache");
 
-        if cache_dir.exists() {
-            Ok(cache_dir)
-        } else {
-            Err(ScoopieError::CacheDirUnavailable)
+        match cache_dir.exists() {
+            true => Ok(cache_dir),
+            false => Err(ScoopieError::CacheDirUnavailable),
         }
     }
 
     fn app_dir() -> Result<PathBuf, ScoopieError> {
-        let scoopie_home = Self::home_dir()?;
-        let apps_dir = scoopie_home.join("apps");
+        let apps_dir = Self::home_dir()?.join("apps");
 
-        if apps_dir.exists() {
-            Ok(apps_dir)
-        } else {
-            Err(ScoopieError::AppsDirUnavailable)
+        match apps_dir.exists() {
+            true => Ok(apps_dir),
+            false => Err(ScoopieError::AppsDirUnavailable),
         }
     }
 
     fn persist_dir() -> Result<PathBuf, ScoopieError> {
-        let scoopie_home = Self::home_dir()?;
-        let persist_dir = scoopie_home.join("persists");
+        let persist_dir = Self::home_dir()?.join("persists");
 
-        if persist_dir.exists() {
-            Ok(persist_dir)
-        } else {
-            Err(ScoopieError::PersistDirUnavailable)
+        match persist_dir.exists() {
+            true => Ok(persist_dir),
+            false => Err(ScoopieError::PersistDirUnavailable),
         }
     }
 
     fn shims_dir() -> Result<PathBuf, ScoopieError> {
-        let scoopie_home = Self::home_dir()?;
-        let shims_dir = scoopie_home.join("shims");
+        let shims_dir = Self::home_dir()?.join("shims");
 
-        if shims_dir.exists() {
-            Ok(shims_dir)
-        } else {
-            Err(ScoopieError::ShimsDirUnavailable)
+        match shims_dir.exists() {
+            true => Ok(shims_dir),
+            false => Err(ScoopieError::ShimsDirUnavailable),
         }
     }
 }
@@ -213,6 +207,7 @@ impl Stats for Config {
         match env::consts::ARCH {
             "x86" => Ok("32bit"),
             "x86_64" => Ok("64bit"),
+            "aarch64" => Ok("arm64"),
             _ => Err(ScoopieError::UnknownArch),
         }
     }
