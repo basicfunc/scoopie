@@ -85,7 +85,7 @@ pub enum BucketError {
     #[error("Uanble to read mainfest")]
     MainfestRead,
     #[error("Invalid JSON format")]
-    InvalidJSON,
+    InvalidManifest,
 }
 
 #[derive(Debug, Error)]
@@ -118,8 +118,8 @@ pub enum ConfigError {
 pub enum QueryError {
     #[error("Failed to retrieve data")]
     FailedToRetrieveData,
-    #[error("Found invalid JSON while retrieving data")]
-    InavlidJSONData,
-    #[error("Failed to query")]
-    FailedToQuery,
+    // #[error("Found invalid JSON while retrieving data")]
+    // InavlidJSONData,
+    // #[error("Failed to query")]
+    // FailedToQuery,
 }

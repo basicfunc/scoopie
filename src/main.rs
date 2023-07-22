@@ -49,7 +49,7 @@ fn main() {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
         Command::Query(query) => match QueryCommand::from(query) {
-            Ok(results) => results.iter().for_each(|f| println!("{f}")),
+            Ok(results) => results.iter().for_each(|f| print!("{f}")),
             Err(e) => eprintln!("{e}"),
         },
         Command::Locate(_) => todo!(),
