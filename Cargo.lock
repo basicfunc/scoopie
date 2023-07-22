@@ -1455,6 +1455,7 @@ dependencies = [
  "argh",
  "dirs",
  "git2",
+ "lazy_static",
  "rayon",
  "rusqlite",
  "serde",
