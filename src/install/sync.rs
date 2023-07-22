@@ -18,7 +18,7 @@ impl Sync {
         buckets
             .par_iter()
             .map(|(name, url)| {
-                RawBucket::new(name, url, &temp_dir.join(name)).and_then(Bucket::try_from)
+                Bucket::raw(name, url, &temp_dir.join(name)).and_then(Bucket::try_from)
             })
             .collect::<Result<Vec<Bucket>, _>>()
     }

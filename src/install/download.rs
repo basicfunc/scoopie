@@ -1,18 +1,15 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-use serde_json::{from_str, Value};
+use lazy_static::lazy_static;
 
-use crate::{config::*, error::ScoopieError, query::Query};
+use crate::{bucket::*, config::*, error::ScoopieError};
 
-const APP_QUERY: &'static str = "SELECT app_name, manifest FROM manifests WHERE app_name LIKE ?";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DownloadEntry {
-    url: String,
-    hash: String,
+lazy_static! {
+    static ref APP_QUERY: &'static str =
+        "SELECT app_name, manifest FROM manifests WHERE app_name LIKE ?";
 }
 
+#[allow(dead_code)]
 pub struct Downloader {
     download_dir: PathBuf,
     arch: &'static str,
@@ -27,28 +24,28 @@ impl Downloader {
     }
 
     pub fn download(&self, app: &str) -> Result<(), ScoopieError> {
-        let raw = Query::builder(APP_QUERY)?.run(app)?;
+        let _raw = Bucket::build_query(*APP_QUERY)?.execute(app.into())?;
 
-        for app in raw {
-            let mainfest: Value = from_str(&app.manifest)
-                .map_err(|_| ScoopieError::Bucket(crate::error::BucketError::InvalidJSON))?;
+        // for app in raw {
+        //     let mainfest: Value = from_str(&app.manifest)
+        //         .map_err(|_| ScoopieError::Bucket(crate::error::BucketError::InvalidManifest))?;
 
-            let entry = mainfest
-                .get("architecture")
-                .unwrap_or(&Value::Null)
-                .get(self.arch)
-                .unwrap_or(&Value::Null);
+        //     let entry = mainfest
+        //         .get("architecture")
+        //         .unwrap_or(&Value::Null)
+        //         .get(self.arch)
+        //         .unwrap_or(&Value::Null);
 
-            let entry = if !entry.is_null() {
-                entry
-            } else {
-                mainfest.get("url").unwrap_or(&Value::Null)
-            };
+        //     let entry = if !entry.is_null() {
+        //         entry
+        //     } else {
+        //         mainfest.get("url").unwrap_or(&Value::Null)
+        //     };
 
-            let entry: DownloadEntry = serde_json::from_value(entry.clone()).unwrap();
+        //     let entry: DownloadEntry = serde_json::from_value(entry.clone()).unwrap();
 
-            println!("Name: {}\n{:?}", app.app_name, entry);
-        }
+        //     println!("Name: {}\n{:?}", app.app_name, entry);
+        // }
 
         Ok(())
     }
