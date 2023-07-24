@@ -1,7 +1,8 @@
-use std::{path::PathBuf, vec};
+use std::{collections::HashMap, format, path::PathBuf, print, vec};
 
 use lazy_static::lazy_static;
 use rayon::prelude::*;
+use reqwest::Url;
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use trauma::{download::Download as Downloader, downloader::DownloaderBuilder};
@@ -117,7 +118,7 @@ impl Download for DownloadEntry {
                 match links {
                     Value::String(s) => vec![s],
                     Value::Array(arr) => arr
-                        .iter()
+                        .par_iter()
                         .map(|a| a.as_str().unwrap().to_string())
                         .collect(),
                     _ => vec![],
@@ -127,13 +128,26 @@ impl Download for DownloadEntry {
             _ => vec![],
         };
 
-        let downloads: Vec<_> = if !urls.is_empty() {
-            urls.iter()
-                .map(|u| Downloader::try_from(u.as_str()).unwrap())
-                .collect()
-        } else {
-            vec![]
-        };
+        let download_entry: HashMap<String, Url> = urls
+            .par_iter()
+            .map(|url| {
+                let u = Url::parse(&url).unwrap();
+                let f = format!(
+                    "{}{}{}",
+                    &self.app_name,
+                    u.path(),
+                    u.fragment().unwrap_or_default()
+                )
+                .replace("/", "_");
+
+                (f, u)
+            })
+            .collect();
+
+        let downloads: Vec<_> = download_entry
+            .par_iter()
+            .map(|(f, u)| Downloader::new(u, f))
+            .collect();
 
         let dm = DownloaderBuilder::new()
             .directory(PathBuf::from(&self.download_dir))

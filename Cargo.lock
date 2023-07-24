@@ -1467,6 +1467,7 @@ dependencies = [
  "git2",
  "lazy_static",
  "rayon",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
