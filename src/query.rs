@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use argh::FromArgs;
 use lazy_static::lazy_static;
 
@@ -18,25 +20,39 @@ pub struct QueryCommand {
     query: String,
 }
 
-impl QueryCommand {
-    pub fn from(query: QueryCommand) -> Result<Vec<RawData>, ScoopieError> {
-        let q = query.query.trim();
+pub trait Query<T> {
+    type Error;
+    fn direct(app_name: T) -> Result<RawResult, Self::Error>;
+    fn full_text(terms: T) -> Result<RawResult, Self::Error>;
+}
 
-        match q.contains(" ") {
-            true => Self::query_fts(q),
-            false => Self::query_app(q),
-        }
-    }
+impl Query<&str> for QueryCommand {
+    type Error = ScoopieError;
 
-    fn query_app(app_name: &str) -> Result<Vec<RawData>, ScoopieError> {
+    fn direct(app_name: &str) -> Result<RawResult, Self::Error> {
         Bucket::build_query(*APP_QUERY)?.execute(format!("{app_name}*"))
     }
 
-    fn query_fts(terms: &str) -> Result<Vec<RawData>, ScoopieError> {
+    fn full_text(terms: &str) -> Result<RawResult, Self::Error> {
         let query = terms
             .split_whitespace()
             .collect::<Vec<&str>>()
             .join(" AND ");
         Bucket::build_query(*FTS_QUERY)?.execute(format!("{query}*"))
+    }
+}
+
+pub type RawResult = Vec<RawData>;
+
+impl TryFrom<QueryCommand> for RawResult {
+    type Error = ScoopieError;
+
+    fn try_from(value: QueryCommand) -> Result<Self, Self::Error> {
+        let q = value.query.trim();
+
+        match q.contains(" ") {
+            true => QueryCommand::full_text(q),
+            false => QueryCommand::direct(q),
+        }
     }
 }

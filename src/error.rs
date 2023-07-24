@@ -17,7 +17,7 @@ pub enum ScoopieError {
     #[error("{0}")]
     Query(QueryError),
     #[error("{0}")]
-    Find(FindError),
+    Download(DownloadError),
     #[error("Home directory unavailable")]
     HomeDirUnavailable,
     #[error("Config directory unavailable")]
@@ -55,11 +55,15 @@ pub enum ScoopieError {
 }
 
 #[derive(Debug, Error)]
-pub enum FindError {
+pub enum DownloadError {
     #[error("App: \"{0}\" is not available in configured repos.")]
     NoAppFound(String),
     #[error("App: \"{0}\" is not available in {1} repo.")]
     NoAppFoundInBucket(String, String),
+    #[error("Unable to find url for app: {0}.")]
+    UnableToGetUrl(String),
+    #[error("Invalid URL format in manifest: \"{0}.json\".")]
+    InvalidUrlFormat(String),
 }
 
 #[derive(Debug, Error)]

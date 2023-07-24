@@ -198,16 +198,23 @@ impl DefaultDirs for Config {
     }
 }
 
+#[derive(Debug)]
+pub enum Arch {
+    Bit64,
+    Bit32,
+    Arm64,
+}
+
 pub trait Stats {
-    fn arch() -> Result<&'static str, ScoopieError>;
+    fn arch() -> Result<Arch, ScoopieError>;
 }
 
 impl Stats for Config {
-    fn arch() -> Result<&'static str, ScoopieError> {
+    fn arch() -> Result<Arch, ScoopieError> {
         match env::consts::ARCH {
-            "x86" => Ok("32bit"),
-            "x86_64" => Ok("64bit"),
-            "aarch64" => Ok("arm64"),
+            "x86" => Ok(Arch::Bit32),
+            "x86_64" => Ok(Arch::Bit64),
+            "aarch64" => Ok(Arch::Arm64),
             _ => Err(ScoopieError::UnknownArch),
         }
     }

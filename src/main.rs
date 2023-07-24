@@ -21,6 +21,8 @@ use nuke::NukeCommand;
 use query::QueryCommand;
 use remove::RemoveCommand;
 
+use crate::query::RawResult;
+
 #[derive(FromArgs, PartialEq, Debug)]
 /// Scoopie, your favorite package manager
 struct Scoopie {
@@ -48,7 +50,7 @@ fn main() {
     match cmd.cmd {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
-        Command::Query(query) => match QueryCommand::from(query) {
+        Command::Query(query) => match RawResult::try_from(query) {
             Ok(results) => results.iter().for_each(|f| print!("{f}")),
             Err(e) => eprintln!("{e}"),
         },

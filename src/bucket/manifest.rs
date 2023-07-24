@@ -57,14 +57,18 @@ impl TryInto<String> for Manifest {
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Architecture {
     #[serde(rename = "64bit")]
-    bit_64: Option<Links>,
+    pub bit_64: Option<Links>,
     #[serde(rename = "32bit")]
-    bit_32: Option<Links>,
-    arm64: Option<Links>,
+    pub bit_32: Option<Links>,
+    pub arm64: Option<Links>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Links {
-    url: Option<Value>,
-    hash: Option<Value>,
+    pub url: Option<Value>,
+    pub hash: Option<Value>,
+    pub extract_dir: Option<Value>,
+    pub bin: Option<Value>,
+    pub shortcuts: Option<Value>,
+    pub env_add_path: Option<Value>,
 }
