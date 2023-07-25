@@ -1,4 +1,4 @@
-use std::{collections::HashMap, format, path::PathBuf, print, vec};
+use std::{collections::HashMap, format, path::PathBuf};
 
 use lazy_static::lazy_static;
 use rayon::prelude::*;
@@ -9,6 +9,7 @@ use trauma::{download::Download as Downloader, downloader::DownloaderBuilder};
 
 use crate::{
     bucket::{
+        data::BucketData,
         manifest::{Links, Manifest},
         *,
     },
@@ -21,58 +22,67 @@ lazy_static! {
         "SELECT app_name, manifest FROM manifests WHERE app_name LIKE ?";
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DownloadEntry {
     app_name: String,
-    arch: Arch,
     bucket_name: String,
-    download_dir: PathBuf,
     manifest: Manifest,
+}
+
+trait Fetch<T> {
+    type Error;
+    fn from_all(&self, app_name: T) -> Result<DownloadEntry, Self::Error>;
+
+    fn from(&self, app_name: T, bucket: T) -> Result<DownloadEntry, Self::Error>;
+}
+
+impl Fetch<&str> for BucketData {
+    type Error = ScoopieError;
+
+    fn from_all(&self, app_name: &str) -> Result<DownloadEntry, Self::Error> {
+        self.0
+            .par_iter()
+            .find_map_first(|(bucket_name, entries)| {
+                entries
+                    .par_iter()
+                    .find_first(|entry| entry.app_name == app_name)
+                    .map(|entry| DownloadEntry {
+                        app_name: entry.app_name.to_owned(),
+                        bucket_name: bucket_name.to_owned(),
+                        manifest: entry.manifest.to_owned(),
+                    })
+            })
+            .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFound(app_name.into())))
+    }
+
+    fn from(&self, app_name: &str, bucket: &str) -> Result<DownloadEntry, Self::Error> {
+        self.0
+            .get(bucket)
+            .map(|entries| entries.par_iter().find_first(|x| x.app_name == app_name))
+            .flatten()
+            .map(|entry| DownloadEntry {
+                app_name: app_name.to_owned(),
+                bucket_name: bucket.to_owned(),
+                manifest: entry.manifest.to_owned(),
+            })
+            .ok_or_else(|| {
+                ScoopieError::Download(DownloadError::NoAppFoundInBucket(
+                    app_name.into(),
+                    bucket.into(),
+                ))
+            })
+    }
 }
 
 impl TryFrom<&String> for DownloadEntry {
     type Error = ScoopieError;
 
     fn try_from(value: &String) -> Result<Self, Self::Error> {
-        let download_dir = Config::cache_dir()?;
-        let arch = Config::arch()?;
-
         let query = Bucket::build_query(*APP_QUERY)?;
 
-        let (bucket, app_name) = match value.split_once('/') {
-            Some(stmt) => (Some(stmt.0), stmt.1),
-            None => (None, value.as_str()),
-        };
-
-        let raw_data = query.execute(app_name.into())?;
-
-        match raw_data.par_iter().find_map_any(|data| {
-            data.entries.par_iter().find_map_any(|entry| {
-                if (bucket.is_none() || Some(data.bucket_name.as_str()) == bucket)
-                    && entry.app_name == app_name
-                {
-                    Some((data.bucket_name.to_owned(), entry))
-                } else {
-                    None
-                }
-            })
-        }) {
-            Some((bucket_name, entry)) => Ok(DownloadEntry {
-                bucket_name: bucket_name.into(),
-                app_name: entry.app_name.clone(),
-                manifest: entry.manifest.clone(),
-                arch,
-                download_dir,
-            }),
-            None => Err(bucket.map_or(
-                ScoopieError::Download(DownloadError::NoAppFound(value.into())),
-                |b| {
-                    ScoopieError::Download(DownloadError::NoAppFoundInBucket(
-                        app_name.into(),
-                        b.into(),
-                    ))
-                },
-            )),
+        match value.split_once('/') {
+            Some((bucket, app)) => query.execute(app.into())?.from(app, bucket),
+            None => query.execute(value.into())?.from_all(&value),
         }
     }
 }
@@ -85,14 +95,19 @@ pub trait Download {
 impl Download for DownloadEntry {
     type Error = ScoopieError;
 
-    fn download(&self, verify: bool) -> Result<(), ScoopieError> {
+    fn download(&self, _verify: bool) -> Result<(), ScoopieError> {
+        let cfg = Config::read()?;
+        let arch = Config::arch()?;
+        let download_cfg = cfg.download();
+        let download_dir = Config::cache_dir()?;
+
         let entry = self
             .manifest
             .architecture
             .as_ref()
             .map_or_else(
                 || serde_json::to_value(&self.manifest.url),
-                |v| match self.arch {
+                |v| match arch {
                     Arch::Bit64 => serde_json::to_value(&v.bit_64),
                     Arch::Bit32 => serde_json::to_value(&v.bit_32),
                     Arch::Arm64 => serde_json::to_value(&v.arm64),
@@ -150,14 +165,16 @@ impl Download for DownloadEntry {
             .collect();
 
         let dm = DownloaderBuilder::new()
-            .directory(PathBuf::from(&self.download_dir))
+            .directory(PathBuf::from(download_dir))
+            .retries(download_cfg.max_retries)
+            .concurrent_downloads(download_cfg.concurrent_downloads)
             .build();
 
         let rt = Runtime::new().unwrap();
 
-        let s = rt.block_on(dm.download(&downloads));
+        let _s = rt.block_on(dm.download(&downloads));
 
-        println!("{:?}", s);
+        // println!("{:?}", _s);
 
         Ok(())
     }
