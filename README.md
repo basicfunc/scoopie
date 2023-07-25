@@ -1,6 +1,8 @@
 # Scoopie (WIP)
+![Build CI](https://github.com/basicfunc/scoopie/actions/workflows/rust.yml/badge.svg)
 
 > If Scoop is vanilla, Scoopie will be tutti frutti.
+>                                               - Rahul   
 
 Scoopie is a high-performance alternative to the Scoop package manager for Windows, built from the ground up in Rust. It aims to provide a blazing-fast package management experience while minimizing dependencies and optimizing resource usage. Scoopie leverages parallel processing, bundled tools, and an efficient storage structure to deliver exceptional performance.
 
