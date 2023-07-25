@@ -2,14 +2,15 @@ use argh::FromArgs;
 use dirs::home_dir;
 use std::{
     fmt::Display,
-    fs::{DirBuilder, File},
-    io::Write,
+    fs::DirBuilder,
     path::{Path, PathBuf},
     process::Command,
 };
-use toml::Value;
 
-use crate::error::{InitError, ScoopieError};
+use crate::{
+    config::*,
+    error::{InitError, ScoopieError},
+};
 
 pub type InitResult = Result<ScoopieDirStats, ScoopieError>;
 
@@ -20,11 +21,6 @@ pub struct InitCommand {
     #[argh(positional)]
     path: Option<PathBuf>,
 }
-
-const DEFAULT_TOML: &'static str = r#"
-[buckets]
-main = "https://github.com/ScoopInstaller/Main"
-"#;
 
 #[derive(Debug)]
 pub struct ScoopieDirStats {
@@ -48,7 +44,7 @@ impl InitCommand {
         let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
 
         let scoopie_path = match config.path {
-            Some(x) => get_absolute_path(&x)?,
+            Some(path) => path.get_absolute()?,
             None => home_dir.clone(),
         }
         .join("scoopie");
@@ -66,29 +62,24 @@ impl InitCommand {
             scoopie_path.join("shims"),
         ];
 
-        directories
-            .iter()
-            .try_for_each(|path| create_directory(path))?;
+        directories.iter().try_for_each(|path| Path::mkdir(path))?;
 
         let config_dir = home_dir.join(".config");
 
         if !config_dir.exists() {
-            create_directory(&config_dir)?;
+            Path::mkdir(&config_dir)?;
         }
 
         let scoopie_config = config_dir.join("scoopie.toml");
 
         if !scoopie_config.exists() {
-            let toml: Value = toml::from_str(DEFAULT_TOML)
-                .map_err(|_| ScoopieError::Init(InitError::TOMLParse))?;
-
-            let toml = toml::to_string_pretty(&toml)
-                .map_err(|_| ScoopieError::Init(InitError::TOMLParse))?;
-
-            write_toml(&scoopie_config, toml.as_bytes())?;
+            Config::write(&scoopie_config)?;
         }
 
-        set_environment_variable("SCOOPIE_HOME", &scoopie_path.display().to_string())?;
+        EnvVar::try_from((
+            "SCOOPIE_HOME",
+            scoopie_path.as_path().to_str().unwrap_or_default(),
+        ))?;
 
         Ok(ScoopieDirStats {
             home: scoopie_path,
@@ -97,48 +88,62 @@ impl InitCommand {
     }
 }
 
-fn get_absolute_path(path: &PathBuf) -> Result<PathBuf, ScoopieError> {
-    let absolute_path = path
-        .canonicalize()
-        .map_err(|_| ScoopieError::AbsoultePathResolve)?;
-    let absolute_path_str = absolute_path.to_string_lossy().to_string();
-
-    // Remove the `\\?\` prefix from the absolute path string
-    let path_without_prefix = if absolute_path_str.starts_with("\\\\?\\") {
-        absolute_path_str[4..].to_string()
-    } else {
-        absolute_path_str
-    };
-
-    Ok(PathBuf::from(path_without_prefix))
+trait Absolute {
+    type Error;
+    fn get_absolute(&self) -> Result<PathBuf, Self::Error>;
 }
 
-fn set_environment_variable(name: &str, value: &str) -> Result<(), ScoopieError> {
-    Command::new("cmd")
-        .args(&["/C", "setx", name, value])
-        .output()
-        .map_err(|_| ScoopieError::Init(InitError::UnableToSetEnvVar))
-        .and_then(|output| {
-            if output.status.success() {
-                Ok(())
-            } else {
-                Err(ScoopieError::Init(InitError::UnableToSetEnvVar))
-            }
-        })
+impl Absolute for PathBuf {
+    type Error = ScoopieError;
+
+    fn get_absolute(&self) -> Result<PathBuf, Self::Error> {
+        let absolute_path = self
+            .canonicalize()
+            .map_err(|_| ScoopieError::AbsoultePathResolve)?;
+        let absolute_path_str = absolute_path.to_string_lossy().to_string();
+
+        // Remove the `\\?\` prefix from the absolute path string
+        Ok(PathBuf::from(
+            match absolute_path_str.starts_with("\\\\?\\") {
+                true => absolute_path_str[4..].to_string(),
+                false => absolute_path_str,
+            },
+        ))
+    }
 }
 
-fn create_directory(path: &Path) -> Result<(), ScoopieError> {
-    DirBuilder::new()
-        .recursive(true)
-        .create(path)
-        .map_err(|_| ScoopieError::FailedToMkdir(path.to_path_buf()))
+struct EnvVar(String, String);
+
+impl TryFrom<(&str, &str)> for EnvVar {
+    type Error = ScoopieError;
+
+    fn try_from(value: (&str, &str)) -> Result<Self, Self::Error> {
+        let name = value.0;
+        let value = value.1;
+
+        let cmd = Command::new("cmd")
+            .args(&["/C", "setx", name, value])
+            .status()
+            .map_err(|_| ScoopieError::Init(InitError::UnableToSetEnvVar))?;
+
+        match cmd.success() {
+            true => Ok(EnvVar(name.into(), value.into())),
+            false => Err(ScoopieError::Init(InitError::UnableToSetEnvVar)),
+        }
+    }
 }
 
-fn write_toml(path: &Path, data: &[u8]) -> Result<(), ScoopieError> {
-    File::create(path)
-        .map_err(|_| ScoopieError::FailedToTouch(path.to_path_buf()))
-        .and_then(|mut file| {
-            file.write_all(data)
-                .map_err(|_| ScoopieError::Init(InitError::ConfigWrite))
-        })
+trait MkDir {
+    type Error;
+    fn mkdir(&self) -> Result<(), Self::Error>;
+}
+
+impl MkDir for Path {
+    type Error = ScoopieError;
+    fn mkdir(&self) -> Result<(), Self::Error> {
+        DirBuilder::new()
+            .recursive(true)
+            .create(self)
+            .map_err(|_| ScoopieError::FailedToMkdir(self.to_path_buf()))
+    }
 }
