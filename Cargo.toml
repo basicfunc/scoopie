@@ -12,6 +12,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 argh = "0.1.10"
+chrono = "0.4.26"
 dirs = "5.0.1"
 git2 = "0.17.2"
 lazy_static = "1.4.0"
