@@ -21,7 +21,7 @@ use nuke::NukeCommand;
 use query::QueryCommand;
 use remove::RemoveCommand;
 
-use crate::query::RawResult;
+use crate::bucket::data::BucketData;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Scoopie, your favorite package manager
@@ -50,8 +50,8 @@ fn main() {
     match cmd.cmd {
         Command::Install(args) => InstallCommand::from(args),
         Command::Remove(_) => todo!(),
-        Command::Query(query) => match RawResult::try_from(query) {
-            Ok(results) => results.iter().for_each(|f| print!("{f}")),
+        Command::Query(query) => match BucketData::try_from(query) {
+            Ok(results) => println!("{results}"),
             Err(e) => eprintln!("{e}"),
         },
         Command::Locate(_) => todo!(),

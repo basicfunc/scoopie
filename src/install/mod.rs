@@ -35,10 +35,9 @@ impl InstallCommand {
             );
         } else if args.download_only {
             match args.app {
-                Some(app) => println!(
-                    "{:?}",
-                    DownloadEntry::try_from(&app).unwrap().download(false)
-                ),
+                Some(app) => DownloadEntry::try_from(&app)
+                    .and_then(|d| d.download(false))
+                    .unwrap(),
                 None => eprintln!("App argument required"),
             }
         } else {

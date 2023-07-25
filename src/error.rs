@@ -18,10 +18,10 @@ pub enum ScoopieError {
     Query(QueryError),
     #[error("{0}")]
     Download(DownloadError),
+    #[error("User directory unavailable")]
+    UserDirUnavailable,
     #[error("Home directory unavailable")]
     HomeDirUnavailable,
-    #[error("Config directory unavailable")]
-    ConfigDirUnavailable,
     #[error("Cache directory unavailable")]
     CacheDirUnavailable,
     #[error("Repos directory unavailable")]
@@ -42,8 +42,6 @@ pub enum ScoopieError {
     EnvRemove,
     #[error("Failed to create directory: {0:?}")]
     FailedToMkdir(PathBuf),
-    #[error("Failed to create file: {0:?}")]
-    FailedToTouch(PathBuf),
     #[error("Permission Denied")]
     PermissionDenied,
     #[error("{0:?} file not found")]
@@ -104,8 +102,6 @@ pub enum BucketError {
 
 #[derive(Debug, Error)]
 pub enum InitError {
-    #[error("TOML parse error")]
-    TOMLParse,
     #[error("Config write error")]
     ConfigWrite,
     #[error("Unable to set environment variable")]
