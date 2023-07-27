@@ -20,7 +20,7 @@ pub struct Manifest {
     pub comments: Option<Value>,
     pub architecture: Option<Architecture>,
     pub autoupdate: Option<Value>, // It is used by scoop to check for autoupdates, currrently out-of-scope for Scoopie.
-    pub checkver: Option<Value>, // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
+    pub checkver: Option<Value>,   // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
     pub depends: Option<Value>,
     pub suggest: Option<Value>,
     pub env_add_path: Option<Value>,

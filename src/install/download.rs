@@ -1,6 +1,5 @@
 use std::{collections::HashMap, format, path::PathBuf};
 
-use lazy_static::lazy_static;
 use rayon::prelude::*;
 use reqwest::Url;
 use serde_json::Value;
@@ -9,7 +8,6 @@ use trauma::{download::Download as Downloader, downloader::DownloaderBuilder};
 
 use crate::{
     bucket::{
-        data::BucketData,
         manifest::{Links, Manifest},
         *,
     },
@@ -17,12 +15,7 @@ use crate::{
     error::*,
 };
 
-lazy_static! {
-    static ref APP_QUERY: &'static str =
-        "SELECT app_name, manifest FROM manifests WHERE app_name LIKE ?";
-}
-
-#[derive(Debug, Clone)]
+// #[derive(Debug, Clone)]
 pub struct DownloadEntry {
     app_name: String,
     bucket_name: String,
@@ -31,32 +24,36 @@ pub struct DownloadEntry {
 
 trait Fetch<T> {
     type Error;
-    fn from_all(&self, app_name: T) -> Result<DownloadEntry, Self::Error>;
-
-    fn from(&self, app_name: T, bucket: T) -> Result<DownloadEntry, Self::Error>;
+    fn fetch(app_name: T) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+    fn fetch_from(app_name: T, bucket: T) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
 }
 
-impl Fetch<&str> for BucketData {
+impl Fetch<&str> for DownloadEntry {
     type Error = ScoopieError;
 
-    fn from_all(&self, app_name: &str) -> Result<DownloadEntry, Self::Error> {
-        self.0
+    fn fetch(app_name: &str) -> Result<Self, Self::Error> {
+        let res = Bucket::query(QueryKind::APP, app_name.into())?;
+
+        res.entries()
             .par_iter()
             .find_map_first(|(bucket_name, entries)| {
-                entries
-                    .par_iter()
-                    .find_first(|entry| entry.app_name == app_name)
-                    .map(|entry| DownloadEntry {
-                        app_name: entry.app_name.to_owned(),
-                        bucket_name: bucket_name.to_owned(),
-                        manifest: entry.manifest.to_owned(),
-                    })
+                entries.par_iter().find_first(|entry| entry.app_name == app_name).map(|entry| DownloadEntry {
+                    app_name: entry.app_name.to_owned(),
+                    bucket_name: bucket_name.to_owned(),
+                    manifest: entry.manifest.to_owned(),
+                })
             })
             .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFound(app_name.into())))
     }
 
-    fn from(&self, app_name: &str, bucket: &str) -> Result<DownloadEntry, Self::Error> {
-        self.0
+    fn fetch_from(app_name: &str, bucket: &str) -> Result<Self, Self::Error> {
+        let res = Bucket::query(QueryKind::APP, app_name.into())?;
+
+        res.entries()
             .get(bucket)
             .map(|entries| entries.par_iter().find_first(|x| x.app_name == app_name))
             .flatten()
@@ -65,12 +62,7 @@ impl Fetch<&str> for BucketData {
                 bucket_name: bucket.to_owned(),
                 manifest: entry.manifest.to_owned(),
             })
-            .ok_or_else(|| {
-                ScoopieError::Download(DownloadError::NoAppFoundInBucket(
-                    app_name.into(),
-                    bucket.into(),
-                ))
-            })
+            .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFoundInBucket(app_name.into(), bucket.into())))
     }
 }
 
@@ -78,11 +70,10 @@ impl TryFrom<&String> for DownloadEntry {
     type Error = ScoopieError;
 
     fn try_from(value: &String) -> Result<Self, Self::Error> {
-        let query = Bucket::build_query(*APP_QUERY)?;
-
-        match value.split_once('/') {
-            Some((bucket, app)) => query.execute(app.into())?.from(app, bucket),
-            None => query.execute(value.into())?.from_all(&value),
+        let app = value.trim();
+        match app.split_once('/') {
+            Some((bucket, app)) => DownloadEntry::fetch_from(app, bucket),
+            None => DownloadEntry::fetch(&app),
         }
     }
 }
@@ -113,29 +104,18 @@ impl Download for DownloadEntry {
                     Arch::Arm64 => serde_json::to_value(&v.arm64),
                 },
             )
-            .map_err(|_| {
-                ScoopieError::Download(DownloadError::UnableToGetUrl(self.app_name.to_owned()))
-            })?;
+            .map_err(|_| ScoopieError::Download(DownloadError::UnableToGetUrl(self.app_name.to_owned())))?;
 
         let urls: Vec<String> = match entry {
             Value::Object(v) => {
                 let links = serde_json::from_value::<Links>(Value::Object(v.clone()))
-                    .map_err(|_| {
-                        ScoopieError::Download(DownloadError::InvalidUrlFormat(
-                            self.app_name.to_owned(),
-                        ))
-                    })?
+                    .map_err(|_| ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?
                     .url
-                    .ok_or(ScoopieError::Download(DownloadError::InvalidUrlFormat(
-                        self.app_name.to_owned(),
-                    )))?;
+                    .ok_or(ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?;
 
                 match links {
                     Value::String(s) => vec![s],
-                    Value::Array(arr) => arr
-                        .par_iter()
-                        .map(|a| a.as_str().unwrap().to_string())
-                        .collect(),
+                    Value::Array(arr) => arr.par_iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
                     _ => vec![],
                 }
             }
@@ -147,22 +127,13 @@ impl Download for DownloadEntry {
             .par_iter()
             .map(|url| {
                 let u = Url::parse(&url).unwrap();
-                let f = format!(
-                    "{}{}{}",
-                    &self.app_name,
-                    u.path(),
-                    u.fragment().unwrap_or_default()
-                )
-                .replace("/", "_");
+                let f = format!("{}{}{}", &self.app_name, u.path(), u.fragment().unwrap_or_default()).replace("/", "_");
 
                 (f, u)
             })
             .collect();
 
-        let downloads: Vec<_> = download_entry
-            .par_iter()
-            .map(|(f, u)| Downloader::new(u, f))
-            .collect();
+        let downloads: Vec<_> = download_entry.par_iter().map(|(f, u)| Downloader::new(u, f)).collect();
 
         let dm = DownloaderBuilder::new()
             .directory(PathBuf::from(download_dir))
@@ -171,9 +142,7 @@ impl Download for DownloadEntry {
             .build();
 
         let rt = Runtime::new().unwrap();
-
         let _s = rt.block_on(dm.download(&downloads));
-
         // println!("{:?}", _s);
 
         Ok(())
