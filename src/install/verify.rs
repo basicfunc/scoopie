@@ -9,24 +9,27 @@ use std::{
     path::PathBuf,
 };
 
-enum Hash {
+#[derive(Debug)]
+pub enum Hash {
     SHA256(String),
     SHA512(String),
     SHA1(String),
     MD5(String),
 }
 
-impl<T> From<T> for Hash
-where
-    T: Into<String> + ?Sized,
-{
-    fn from(value: T) -> Self {
-        let hash_str: String = value.into();
-        match hash_str {
-            s if s.starts_with("sha512:") => Self::SHA512(s[7..].into()),
-            s if s.starts_with("sha1:") => Self::SHA1(s[5..].into()),
-            s if s.starts_with("md5:") => Self::MD5(s[4..].into()),
-            _ => Self::SHA256(hash_str.into()),
+impl From<String> for Hash {
+    fn from(value: String) -> Self {
+        let value = value.trim_matches('"');
+        println!("{}", value);
+
+        let (hash_func, digest) = value.split_once(":").unwrap_or(("", value));
+        let digest = digest.to_string();
+
+        match hash_func {
+            "sha512" => Self::SHA512(digest),
+            "sha1" => Self::SHA1(digest),
+            "md5" => Self::MD5(digest),
+            _ => Self::SHA256(digest),
         }
     }
 }

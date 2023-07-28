@@ -33,7 +33,7 @@ impl InstallCommand {
             Sync::now().map_or_else(|e| eprintln!("{e}"), |buckets| buckets.iter().for_each(|b| println!("{b}")));
         } else if args.download_only {
             match args.app {
-                Some(app) => DownloadEntry::try_from(&app).and_then(|d| d.download(false)).unwrap(),
+                Some(app) => DownloadEntry::try_from(&app).and_then(|d| d.download(true)).unwrap(),
                 None => eprintln!("App argument required"),
             }
         } else {
