@@ -6,17 +6,16 @@ use serde_json::Value;
 use tokio::runtime::Runtime;
 use trauma::{download::Download as Downloader, downloader::DownloaderBuilder};
 
-use crate::{
-    bucket::{
+use {
+    super::{
+        bucket::*,
+        config::*,
         manifest::{Links, Manifest},
-        *,
+        verify::Hash,
     },
-    config::*,
-    error::*,
-    install::verify::Hash,
+    crate::error::*,
 };
 
-// #[derive(Debug, Clone)]
 pub struct DownloadEntry {
     app_name: String,
     manifest: Manifest,

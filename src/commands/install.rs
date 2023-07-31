@@ -1,11 +1,7 @@
-mod download;
-mod sync;
-mod verify;
+use crate::core::{bucket::*, config::*, download::*};
 
 use argh::FromArgs;
-
-use download::*;
-use sync::Sync;
+use rayon::prelude::*;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Install specified app or update app(s)
@@ -28,12 +24,16 @@ pub struct InstallCommand {
 }
 
 impl InstallCommand {
-    pub fn from(args: InstallCommand) {
-        if args.sync {
-            Sync::now().map_or_else(|e| eprintln!("{e}"), |buckets| buckets.iter().for_each(|b| println!("{b}")));
-        } else if args.download_only {
-            match args.app {
-                Some(app) => DownloadEntry::try_from(&app).and_then(|d| d.download(true)).unwrap(),
+    pub fn install(&self) {
+        if self.sync {
+            let config = Config::read().unwrap();
+            let buckets = config.known_buckets();
+            let status: Result<Vec<_>, _> = buckets.par_iter().map(Bucket::sync_from).collect();
+            let status = status.unwrap();
+            println!("{:?}", status);
+        } else if self.download_only {
+            match &self.app {
+                Some(app) => DownloadEntry::try_from(app).and_then(|d| d.download(true)).unwrap(),
                 None => eprintln!("App argument required"),
             }
         } else {

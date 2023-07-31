@@ -1,6 +1,3 @@
-pub mod data;
-pub mod manifest;
-
 use chrono::{DateTime, Local};
 use git2::build::RepoBuilder;
 use lazy_static::lazy_static;
@@ -10,8 +7,8 @@ use tempfile::tempdir;
 
 use std::{collections::HashMap, fmt, fs, path::PathBuf, write};
 
-use crate::{config::*, error::*};
-use data::*;
+use super::{config::*, data::*};
+use crate::error::*;
 
 lazy_static! {
     /// For Creating various Tables
