@@ -85,77 +85,14 @@ impl Download for DownloadEntry {
 
     fn download(&self, verify: bool) -> Result<(), ScoopieError> {
         let cfg = Config::read()?;
-        let arch = Config::arch()?;
         let download_cfg = cfg.download();
         let download_dir = Config::cache_dir()?;
 
-        let entry = self
+        let entries: Vec<(String, Url, Hash)> = self
             .manifest
-            .architecture
-            .as_ref()
-            .map_or_else(
-                || serde_json::to_value(&self.manifest.url),
-                |v| match arch {
-                    Arch::Bit64 => serde_json::to_value(&v.bit_64),
-                    Arch::Bit32 => serde_json::to_value(&v.bit_32),
-                    Arch::Arm64 => serde_json::to_value(&v.arm64),
-                },
-            )
-            .map_err(|_| ScoopieError::Download(DownloadError::UnableToGetUrl(self.app_name.to_owned())))?;
-
-        let urls: Vec<String> = match entry {
-            Value::Object(v) => {
-                let links = serde_json::from_value::<Links>(Value::Object(v.clone()))
-                    .map_err(|_| ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?
-                    .url
-                    .ok_or(ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?;
-
-                match links {
-                    Value::String(s) => vec![s],
-                    Value::Array(arr) => arr.par_iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
-                    _ => vec![],
-                }
-            }
-            Value::Array(v) => v.par_iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
-            Value::String(url) => vec![url],
-            _ => vec![],
-        };
-
-        let hash_entry = match &self.manifest.architecture {
-            Some(x) => match arch {
-                Arch::Bit64 => &x.bit_64.as_ref().unwrap().hash,
-                Arch::Bit32 => &x.bit_32.as_ref().unwrap().hash,
-                Arch::Arm64 => &x.arm64.as_ref().unwrap().hash,
-            }
-            .clone()
-            .unwrap(),
-            None => serde_json::to_value(&self.manifest.hash).unwrap(),
-        };
-
-        let hashes: Vec<String> = match hash_entry {
-            Value::Object(v) => {
-                let links = serde_json::from_value::<Links>(Value::Object(v.clone()))
-                    .map_err(|_| ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?
-                    .hash
-                    .ok_or(ScoopieError::Download(DownloadError::InvalidUrlFormat(self.app_name.to_owned())))?;
-
-                match links {
-                    Value::String(s) => vec![s],
-                    Value::Array(arr) => arr.par_iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
-                    _ => vec![],
-                }
-            }
-            Value::Array(v) => v.par_iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
-            Value::String(hash) => vec![hash],
-            _ => vec![],
-        };
-
-        let entry: Vec<(String, String)> = urls.into_iter().zip(hashes.into_iter()).collect();
-
-        type Entry = (String, Url, Hash);
-
-        let entries: Vec<Entry> = entry
-            .into_par_iter()
+            .url()
+            .into_iter()
+            .zip(self.manifest.hash().into_iter())
             .map(|(url, hash)| {
                 let u = Url::parse(&url).unwrap();
                 let f = format!("{}{}{}", &self.app_name, u.path(), u.fragment().unwrap_or_default()).replace("/", "_");
@@ -164,6 +101,8 @@ impl Download for DownloadEntry {
                 (f, u, h)
             })
             .collect();
+
+        println!("{:?}", entries);
 
         let downloads: Vec<_> = entries.par_iter().map(|(f, u, _)| Downloader::new(u, f)).collect();
 

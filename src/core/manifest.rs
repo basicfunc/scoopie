@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::core::config::*;
 use crate::error::*;
 
 #[derive(Clone, Deserialize, Debug, Default, Serialize)]
@@ -51,6 +52,54 @@ impl TryInto<String> for Manifest {
 
     fn try_into(self) -> Result<String, Self::Error> {
         serde_json::to_string(&self).map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))
+    }
+}
+
+impl Manifest {
+    pub fn url(&self) -> Vec<String> {
+        let value = match &self.architecture {
+            Some(v) => match Config::arch().unwrap() {
+                Arch::Bit64 => serde_json::to_value(&v.bit_64),
+                Arch::Bit32 => serde_json::to_value(&v.bit_32),
+                Arch::Arm64 => serde_json::to_value(&v.arm64),
+            },
+            None => serde_json::to_value(&self.url),
+        }
+        .unwrap();
+
+        match value {
+            Value::Object(v) => match v.get("url") {
+                Some(Value::String(s)) => vec![s.to_string()],
+                Some(Value::Array(arr)) => arr.iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
+                _ => vec![],
+            },
+            Value::Array(v) => v.iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
+            Value::String(url) => vec![url],
+            _ => vec![],
+        }
+    }
+
+    pub fn hash(&self) -> Vec<String> {
+        let value = match &self.architecture {
+            Some(v) => match Config::arch().unwrap() {
+                Arch::Bit64 => serde_json::to_value(&v.bit_64),
+                Arch::Bit32 => serde_json::to_value(&v.bit_32),
+                Arch::Arm64 => serde_json::to_value(&v.arm64),
+            },
+            None => serde_json::to_value(&self.hash),
+        }
+        .unwrap();
+
+        match value {
+            Value::Object(v) => match v.get("hash") {
+                Some(Value::String(s)) => vec![s.to_string()],
+                Some(Value::Array(arr)) => arr.iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
+                _ => vec![],
+            },
+            Value::Array(v) => v.iter().map(|a| a.as_str().unwrap_or_default().to_string()).collect(),
+            Value::String(url) => vec![url],
+            _ => vec![],
+        }
     }
 }
 
