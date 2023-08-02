@@ -33,7 +33,10 @@ impl InstallCommand {
             println!("{:?}", status);
         } else if self.download_only {
             match &self.app {
-                Some(app) => DownloadEntry::try_from(app).and_then(|d| d.download(true)).unwrap(),
+                Some(app) => {
+                    let downloader = Downloader::build_for(app).unwrap();
+                    let status = downloader.download(true);
+                }
                 None => eprintln!("App argument required"),
             }
         } else {

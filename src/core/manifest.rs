@@ -19,38 +19,38 @@ pub struct Manifest {
     pub homepage: String,
     pub license: Value,
     // Optional Properties
-    pub bin: Option<Value>,
-    pub extract_dir: Option<Value>,
+    bin: Option<Value>,
+    extract_dir: Option<Value>,
     #[serde(rename = "##")]
-    pub comments: Option<Value>,
-    pub architecture: Option<Architecture>,
-    pub autoupdate: Option<Value>, // It is used by scoop to check for autoupdates, currrently out-of-scope for Scoopie.
-    pub checkver: Option<Value>,   // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
-    pub depends: Option<Value>,
-    pub suggest: Option<Value>,
-    pub env_add_path: Option<Value>,
-    pub env_set: Option<HashMap<String, String>>,
-    pub extract_to: Option<Value>,
+    comments: Option<Value>,
+    architecture: Option<Architecture>,
+    autoupdate: Option<Value>, // It is used by scoop to check for autoupdates, currrently out-of-scope for Scoopie.
+    checkver: Option<Value>,   // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
+    depends: Option<Value>,
+    suggest: Option<Value>,
+    env_add_path: Option<Value>,
+    env_set: Option<HashMap<String, String>>,
+    extract_to: Option<Value>,
     #[serde(default, deserialize_with = "deserialize_hash")]
-    pub hash: Option<Vec<Hash>>,
-    pub innosetup: Option<bool>,
-    pub installer: Option<Value>, // TODO: implement it as individual struct so that it contains related properties.
-    pub notes: Option<Value>,
-    pub persist: Option<Value>,
-    pub post_install: Option<Value>,
-    pub post_uninstall: Option<Value>,
-    pub pre_install: Option<Value>,
-    pub pre_uninstall: Option<Value>,
-    pub psmodule: Option<HashMap<String, String>>,
-    pub shortcuts: Option<Vec<Vec<String>>>,
-    pub uninstaller: Option<Value>, // TODO: Same options as installer, but the file/script is run to uninstall the application.
+    hash: Option<Vec<Hash>>,
+    innosetup: Option<bool>,
+    installer: Option<Value>, // TODO: implement it as individual struct so that it contains related properties.
+    notes: Option<Value>,
+    persist: Option<Value>,
+    post_install: Option<Value>,
+    post_uninstall: Option<Value>,
+    pre_install: Option<Value>,
+    pre_uninstall: Option<Value>,
+    psmodule: Option<HashMap<String, String>>,
+    shortcuts: Option<Vec<Vec<String>>>,
+    uninstaller: Option<Value>, // TODO: Same options as installer, but the file/script is run to uninstall the application.
     #[serde(default, deserialize_with = "deserialize_url")]
-    pub url: Option<Vec<Url>>,
+    url: Option<Vec<Url>>,
     // Undocumented Properties
-    pub cookie: Option<Value>,
+    cookie: Option<Value>,
     // Deprecated Properties
-    pub _comment: Option<Vec<String>>,
-    pub msi: Option<String>,
+    _comment: Option<Vec<String>>,
+    msi: Option<String>,
 }
 
 fn deserialize_url<'de, D>(deserializer: D) -> Result<Option<Vec<Url>>, D::Error>
@@ -98,16 +98,16 @@ impl Manifest {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Architecture {
+struct Architecture {
     #[serde(rename = "64bit")]
-    pub bit_64: Option<Links>,
+    bit_64: Option<Attrs>,
     #[serde(rename = "32bit")]
-    pub bit_32: Option<Links>,
-    pub arm64: Option<Links>,
+    bit_32: Option<Attrs>,
+    arm64: Option<Attrs>,
 }
 
 impl Architecture {
-    fn get(&self) -> Links {
+    fn get(&self) -> Attrs {
         let arch = Config::arch().unwrap();
 
         match arch {
@@ -121,18 +121,18 @@ impl Architecture {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct Links {
+struct Attrs {
     #[serde(default, deserialize_with = "deserialize_url")]
-    pub url: Option<Vec<Url>>,
+    url: Option<Vec<Url>>,
     #[serde(default, deserialize_with = "deserialize_hash")]
-    pub hash: Option<Vec<Hash>>,
-    pub extract_dir: Option<Value>,
-    pub bin: Option<Value>,
-    pub shortcuts: Option<Value>,
-    pub env_add_path: Option<Value>,
+    hash: Option<Vec<Hash>>,
+    extract_dir: Option<Value>,
+    bin: Option<Value>,
+    shortcuts: Option<Value>,
+    env_add_path: Option<Value>,
 }
 
-impl Links {
+impl Attrs {
     fn url(self) -> Vec<Url> {
         self.url.unwrap_or_default()
     }

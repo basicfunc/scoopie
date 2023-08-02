@@ -12,7 +12,7 @@ use std::{
     write,
 };
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Entry {
     pub app_name: String,
     pub manifest: Manifest,
