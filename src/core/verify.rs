@@ -1,5 +1,7 @@
 use digest::{Digest, FixedOutput};
 use md5::Md5;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
 
@@ -9,7 +11,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Hash {
     SHA256(String),
     SHA512(String),
@@ -17,21 +19,52 @@ pub enum Hash {
     MD5(String),
 }
 
-impl From<String> for Hash {
-    fn from(value: String) -> Self {
-        let value = value.trim_matches('"');
-        println!("{}", value);
+impl Serialize for Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Hash::SHA256(digest) => serializer.serialize_str(&format!("{}", digest)),
+            Hash::SHA512(digest) => serializer.serialize_str(&format!("sha512:{}", digest)),
+            Hash::SHA1(digest) => serializer.serialize_str(&format!("sha1:{}", digest)),
+            Hash::MD5(digest) => serializer.serialize_str(&format!("md5:{}", digest)),
+        }
+    }
+}
 
-        let (hash_func, digest) = value.split_once(":").unwrap_or(("", value));
+impl<'de> Deserialize<'de> for Hash {
+    fn deserialize<D>(deserializer: D) -> Result<Hash, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+
+        let s = s.trim_matches('"');
+
+        let (hash_func, digest) = s.split_once(':').unwrap_or(("", s));
         let digest = digest.to_string();
 
         match hash_func {
-            "sha512" => Self::SHA512(digest),
-            "sha1" => Self::SHA1(digest),
-            "md5" => Self::MD5(digest),
-            _ => Self::SHA256(digest),
+            "sha512" => Ok(Hash::SHA512(digest)),
+            "sha1" => Ok(Hash::SHA1(digest)),
+            "md5" => Ok(Hash::MD5(digest)),
+            _ => Ok(Hash::SHA256(digest)),
         }
     }
+}
+
+pub fn deserialize_hash<'de, D>(deserializer: D) -> Result<Option<Vec<Hash>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<Value> = Deserialize::deserialize(deserializer)?;
+
+    Ok(match value {
+        Some(Value::Array(a)) => Some(a.iter().map(|s| Hash::deserialize(s).map_err(serde::de::Error::custom)).collect::<Result<Vec<_>, _>>()?),
+        Some(Value::String(s)) => Some(vec![Hash::deserialize(&Value::String(s)).map_err(serde::de::Error::custom)?]),
+        _ => None,
+    })
 }
 
 impl Hash {
@@ -40,29 +73,20 @@ impl Hash {
         let mut buff: Vec<u8> = Vec::new();
         file.read_to_end(&mut buff)?;
 
-        let expected_hash = match self {
-            Hash::SHA256(x) => x,
-            Hash::SHA512(x) => x,
-            Hash::SHA1(x) => x,
-            Hash::MD5(x) => x,
+        fn calc_hash<D: Digest + FixedOutput>(data: &[u8]) -> String {
+            let mut hasher = D::new();
+            Digest::update(&mut hasher, data);
+            let res = hasher.finalize_fixed();
+            hex::encode(res)
         }
-        .to_lowercase();
 
-        let hash = match self {
-            Hash::SHA256(_) => calc_hash::<Sha256>(&buff),
-            Hash::SHA512(_) => calc_hash::<Sha512>(&buff),
-            Hash::SHA1(_) => calc_hash::<Sha1>(&buff),
-            Hash::MD5(_) => calc_hash::<Md5>(&buff),
-        }
-        .to_lowercase();
+        let (expected_hash, original_hash) = match self {
+            Hash::SHA256(x) => (x, calc_hash::<Sha256>(&buff)),
+            Hash::SHA512(x) => (x, calc_hash::<Sha512>(&buff)),
+            Hash::SHA1(x) => (x, calc_hash::<Sha1>(&buff)),
+            Hash::MD5(x) => (x, calc_hash::<Md5>(&buff)),
+        };
 
-        Ok(expected_hash == hash)
+        Ok(expected_hash.to_lowercase() == original_hash.to_lowercase())
     }
-}
-
-fn calc_hash<D: Digest + FixedOutput>(data: &[u8]) -> String {
-    let mut hasher = D::new();
-    Digest::update(&mut hasher, data);
-    let res = hasher.finalize_fixed();
-    hex::encode(res)
 }
