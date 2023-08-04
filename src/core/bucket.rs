@@ -72,11 +72,19 @@ impl SyncFrom<(&String, &String)> for Bucket {
         let temp_dir = tempdir().map_err(|_| ScoopieError::Sync(SyncError::UnableToMkTmpDir))?;
         let path = temp_dir.path();
 
-        let repo = RepoBuilder::new().clone(&url, &path).map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
+        let repo = RepoBuilder::new()
+            .clone(&url, &path)
+            .map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
 
-        let head = repo.head().map_err(|_| ScoopieError::Sync(SyncError::UnableToGetHead))?;
+        let head = repo
+            .head()
+            .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetHead))?;
 
-        let commit_id = head.peel_to_commit().map_err(|_| ScoopieError::Sync(SyncError::UnableToGetCommit))?.id().to_string();
+        let commit_id = head
+            .peel_to_commit()
+            .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetCommit))?
+            .id()
+            .to_string();
 
         let bucket_path = path.join("bucket");
 
@@ -109,30 +117,47 @@ impl SyncFrom<(&String, &String)> for Bucket {
         let bucket_path = Config::buckets_dir()?.join(&bucket_path);
 
         let create_bucket = |path: &PathBuf| -> Result<String, ScoopieError> {
-            let conn = Connection::open(&path).map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
+            let conn = Connection::open(&path)
+                .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
-            conn.execute(*METADATA_TABLE_CREATE_STMT, []).map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+            conn.execute(*METADATA_TABLE_CREATE_STMT, [])
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
             conn.execute(
                 *METADATA_INSERT_STMT,
-                params![&metadata.bucket_name, &metadata.commit_id, &metadata.url, &metadata.date, &metadata.time, &metadata.no_of_manifests],
+                params![
+                    &metadata.bucket_name,
+                    &metadata.commit_id,
+                    &metadata.url,
+                    &metadata.date,
+                    &metadata.time,
+                    &metadata.no_of_manifests
+                ],
             )
             .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
 
-            conn.execute(*TABLE_CREATE_STMT, []).map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+            conn.execute(*TABLE_CREATE_STMT, [])
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
-            let mut stmt = conn.prepare(*INSERT_STMT).map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
+            let mut stmt = conn
+                .prepare(*INSERT_STMT)
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
-            entries.iter().try_for_each(|e| -> Result<(), ScoopieError> {
-                let manifest = serde_json::to_value(&e.manifest).unwrap();
-                stmt.execute(params![&e.app_name, &manifest]).map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
+            entries
+                .iter()
+                .try_for_each(|e| -> Result<(), ScoopieError> {
+                    let manifest = serde_json::to_value(&e.manifest).unwrap();
+                    stmt.execute(params![&e.app_name, &manifest])
+                        .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
 
-                Ok(())
-            })?;
+                    Ok(())
+                })?;
 
-            conn.execute(*FTS_TABLE_CREATE_STMT, []).map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
+            conn.execute(*FTS_TABLE_CREATE_STMT, [])
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToCreateTable))?;
 
-            conn.execute(*FTS_INSERT_STMT, []).map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
+            conn.execute(*FTS_INSERT_STMT, [])
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedInsertion))?;
             Ok(bucket_name.into())
         };
 
@@ -181,9 +206,12 @@ impl Query<QueryKind> for Bucket {
         };
 
         let query_each = |bucket_path: &PathBuf| -> Result<(String, Vec<Entry>), ScoopieError> {
-            let conn = Connection::open(bucket_path).map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
+            let conn = Connection::open(bucket_path)
+                .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
-            let mut stmt = conn.prepare(query_stmt).map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
+            let mut stmt = conn
+                .prepare(query_stmt)
+                .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
             let entries: Vec<Entry> = stmt
                 .query_map(params![params], |row| Entry::try_from(row))
@@ -191,12 +219,20 @@ impl Query<QueryKind> for Bucket {
                 .flat_map(Result::ok)
                 .collect();
 
-            let bucket_name = bucket_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let bucket_name = bucket_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
 
             Ok((bucket_name, entries))
         };
 
-        let entries = Config::read()?.latest_buckets()?.par_iter().map(query_each).collect::<Result<HashMap<_, Vec<_>>, _>>()?;
+        let entries = Config::read()?
+            .latest_buckets()?
+            .par_iter()
+            .map(query_each)
+            .collect::<Result<HashMap<_, Vec<_>>, _>>()?;
         Ok(BucketData::from(entries))
     }
 
@@ -204,9 +240,12 @@ impl Query<QueryKind> for Bucket {
         let mut bucket_path = Config::buckets_dir()?.join(bucket_name);
         bucket_path.set_extension("db");
 
-        let conn = Connection::open(bucket_path).map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
+        let conn = Connection::open(bucket_path)
+            .map_err(|_| ScoopieError::Database(DatabaseError::UnableToOpen))?;
 
-        let mut stmt = conn.prepare(*COMMIT_QUERY).map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
+        let mut stmt = conn
+            .prepare(*COMMIT_QUERY)
+            .map_err(|_| ScoopieError::Database(DatabaseError::FailedToMkStmt))?;
 
         let commit_id = stmt.query_map([], |row| {
             let id: String = row.get(0)?;

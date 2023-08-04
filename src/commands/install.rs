@@ -36,6 +36,7 @@ impl InstallCommand {
                 Some(app) => {
                     let downloader = Downloader::build_for(app).unwrap();
                     let status = downloader.download(true);
+                    println!("{:?}", status);
                 }
                 None => eprintln!("App argument required"),
             }

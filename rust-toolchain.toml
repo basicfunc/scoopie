@@ -1,4 +1,0 @@
-[toolchain]
-toolchain = [ "stable-x86_64-pc-windows-gnu" ]
-profile = "default"
-channel = "1.71.0"

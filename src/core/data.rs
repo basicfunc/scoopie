@@ -39,10 +39,16 @@ impl TryMaybeFrom<Result<DirEntry, Error>> for Entry {
 
         Ok(match file_path.extension().unwrap_or_default() == "json" {
             true => Some(Entry {
-                app_name: file_path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
+                app_name: file_path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
                 manifest: {
-                    let buff = fs::read_to_string(&file_path).map_err(|_| ScoopieError::Bucket(BucketError::MainfestRead))?;
-                    serde_json::from_str(&buff).map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))?
+                    let buff = fs::read_to_string(&file_path)
+                        .map_err(|_| ScoopieError::Bucket(BucketError::MainfestRead))?;
+                    serde_json::from_str(&buff)
+                        .map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))?
                 },
             }),
             false => None,
@@ -86,9 +92,15 @@ impl fmt::Display for BucketData {
             .0
             .par_iter()
             .flat_map(|(bucket_name, entries)| {
-                entries
-                    .par_iter()
-                    .map(move |entry| format!("\n{}/{}  {}\n  {}", &entry.app_name, &bucket_name, &entry.manifest.version, &entry.manifest.description))
+                entries.par_iter().map(move |entry| {
+                    format!(
+                        "\n{}/{}  {}\n  {}",
+                        &entry.app_name,
+                        &bucket_name,
+                        &entry.manifest.version,
+                        &entry.manifest.description
+                    )
+                })
             })
             .collect();
 

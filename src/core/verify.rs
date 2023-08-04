@@ -61,8 +61,14 @@ where
     let value: Option<Value> = Deserialize::deserialize(deserializer)?;
 
     Ok(match value {
-        Some(Value::Array(a)) => Some(a.iter().map(|s| Hash::deserialize(s).map_err(serde::de::Error::custom)).collect::<Result<Vec<_>, _>>()?),
-        Some(Value::String(s)) => Some(vec![Hash::deserialize(&Value::String(s)).map_err(serde::de::Error::custom)?]),
+        Some(Value::Array(a)) => Some(
+            a.iter()
+                .map(|s| Hash::deserialize(s).map_err(serde::de::Error::custom))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        Some(Value::String(s)) => Some(vec![
+            Hash::deserialize(&Value::String(s)).map_err(serde::de::Error::custom)?
+        ]),
         _ => None,
     })
 }

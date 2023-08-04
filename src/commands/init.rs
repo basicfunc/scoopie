@@ -30,7 +30,12 @@ pub struct ScoopieDirStats {
 
 impl Display for ScoopieDirStats {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nConfig at: {}", self.home.display(), self.config.display())
+        write!(
+            f,
+            "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nConfig at: {}",
+            self.home.display(),
+            self.config.display()
+        )
     }
 }
 
@@ -71,7 +76,10 @@ impl InitCommand {
             Config::write(&scoopie_config)?;
         }
 
-        EnvVar::try_from(("SCOOPIE_HOME", scoopie_path.as_path().to_str().unwrap_or_default()))?;
+        EnvVar::try_from((
+            "SCOOPIE_HOME",
+            scoopie_path.as_path().to_str().unwrap_or_default(),
+        ))?;
 
         Ok(ScoopieDirStats {
             home: scoopie_path,
@@ -89,14 +97,18 @@ impl Absolute for PathBuf {
     type Error = ScoopieError;
 
     fn get_absolute(&self) -> Result<PathBuf, Self::Error> {
-        let absolute_path = self.canonicalize().map_err(|_| ScoopieError::AbsoultePathResolve)?;
+        let absolute_path = self
+            .canonicalize()
+            .map_err(|_| ScoopieError::AbsoultePathResolve)?;
         let absolute_path_str = absolute_path.to_string_lossy().to_string();
 
         // Remove the `\\?\` prefix from the absolute path string
-        Ok(PathBuf::from(match absolute_path_str.starts_with("\\\\?\\") {
-            true => absolute_path_str[4..].to_string(),
-            false => absolute_path_str,
-        }))
+        Ok(PathBuf::from(
+            match absolute_path_str.starts_with("\\\\?\\") {
+                true => absolute_path_str[4..].to_string(),
+                false => absolute_path_str,
+            },
+        ))
     }
 }
 
@@ -129,6 +141,9 @@ trait MkDir {
 impl MkDir for Path {
     type Error = ScoopieError;
     fn mkdir(&self) -> Result<(), Self::Error> {
-        DirBuilder::new().recursive(true).create(self).map_err(|_| ScoopieError::FailedToMkdir(self.to_path_buf()))
+        DirBuilder::new()
+            .recursive(true)
+            .create(self)
+            .map_err(|_| ScoopieError::FailedToMkdir(self.to_path_buf()))
     }
 }

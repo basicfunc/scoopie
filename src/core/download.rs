@@ -12,7 +12,11 @@ use {
 
 #[derive(Debug)]
 pub enum DownloadStatus {
-    Success,
+    DownloadFailed,
+    Downloaded,
+    DownloadedAndVerified,
+    DownloadedAndVerifyFailed,
+    AlreadyInCache,
 }
 
 #[derive(Debug)]
@@ -53,7 +57,12 @@ impl FetchFromBucket<&str> for DownloadEntry {
         let manifest = res
             .entries()
             .par_iter()
-            .find_map_first(|(_, entries)| entries.par_iter().find_first(|entry| entry.app_name == app_name).map(|entry| entry.manifest.to_owned()))
+            .find_map_first(|(_, entries)| {
+                entries
+                    .par_iter()
+                    .find_first(|entry| entry.app_name == app_name)
+                    .map(|entry| entry.manifest.to_owned())
+            })
             .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFound(app_name.into())))?;
 
         let app_name: String = app_name.into();
@@ -64,13 +73,24 @@ impl FetchFromBucket<&str> for DownloadEntry {
             .into_par_iter()
             .zip(manifest.hash().into_par_iter())
             .map(|(url, hash)| {
-                let file = format!("{}_{}{}{}", app_name, version, url.path(), url.fragment().unwrap_or("")).replace("/", "_");
+                let file = format!(
+                    "{}_{}{}{}",
+                    app_name,
+                    version,
+                    url.path(),
+                    url.fragment().unwrap_or("")
+                )
+                .replace("/", "_");
 
                 Metadata(file, hash, url)
             })
             .collect();
 
-        Ok(Self { app_name, version, metadata })
+        Ok(Self {
+            app_name,
+            version,
+            metadata,
+        })
     }
 
     fn fetch_from(app_name: &str, bucket_name: &str) -> Result<Self, Self::Error> {
@@ -82,7 +102,12 @@ impl FetchFromBucket<&str> for DownloadEntry {
             .map(|entries| entries.par_iter().find_first(|x| x.app_name == app_name))
             .flatten()
             .map(|entry| entry.manifest.to_owned())
-            .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFoundInBucket(app_name.into(), bucket_name.into())))?;
+            .ok_or_else(|| {
+                ScoopieError::Download(DownloadError::NoAppFoundInBucket(
+                    app_name.into(),
+                    bucket_name.into(),
+                ))
+            })?;
 
         let app_name: String = app_name.into();
         let version = manifest.version.clone();
@@ -92,13 +117,24 @@ impl FetchFromBucket<&str> for DownloadEntry {
             .into_par_iter()
             .zip(manifest.hash().into_par_iter())
             .map(|(url, hash)| {
-                let file = format!("{}_{}{}{}", app_name, version, url.path(), url.fragment().unwrap_or("")).replace("/", "_");
+                let file = format!(
+                    "{}_{}{}{}",
+                    app_name,
+                    version,
+                    url.path(),
+                    url.fragment().unwrap_or("")
+                )
+                .replace("/", "_");
 
                 Metadata(file, hash, url)
             })
             .collect();
 
-        Ok(Self { app_name, version, metadata })
+        Ok(Self {
+            app_name,
+            version,
+            metadata,
+        })
     }
 }
 
@@ -116,7 +152,11 @@ impl DownloadEntry {
 
     fn verify(&self) -> Result<bool, ScoopieError> {
         let download_dir = Config::cache_dir()?;
-        Ok(self.metadata.par_iter().map(|m| m.1.verify(&PathBuf::from(download_dir.join(&m.0))).unwrap()).all(|v| v == true))
+        Ok(self
+            .metadata
+            .par_iter()
+            .map(|m| m.1.verify(&PathBuf::from(download_dir.join(&m.0))).unwrap())
+            .all(|v| v == true))
     }
 }
 
@@ -172,15 +212,27 @@ impl Downloader {
 
         let downloads = self.item.get()?;
 
-        if !downloads.is_empty() {
-            let rt = Runtime::new().unwrap();
-            let _s = rt.block_on(dm.download(&downloads));
-            let verified = if verify { self.item.verify()? } else { false };
-            println!("{verified}");
-        } else {
-            println!("\"{} v{}\" already in cache", self.item.app_name, self.item.version);
-        }
+        let status = match downloads.is_empty() {
+            true => DownloadStatus::AlreadyInCache,
+            false => {
+                let s = {
+                    let rt = Runtime::new().unwrap();
+                    rt.block_on(dm.download(&downloads))
+                };
 
-        Ok(DownloadStatus::Success)
+                match s.iter().any(|st| {
+                    (st.statuscode().is_server_error() || st.statuscode().is_client_error())
+                }) {
+                    true => DownloadStatus::DownloadFailed,
+                    false => match (verify, self.item.verify()?) {
+                        (true, true) => DownloadStatus::DownloadedAndVerified,
+                        (true, false) => DownloadStatus::DownloadedAndVerifyFailed,
+                        (false, _) => DownloadStatus::Downloaded,
+                    },
+                }
+            }
+        };
+
+        Ok(status)
     }
 }

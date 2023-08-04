@@ -25,7 +25,7 @@ pub struct Manifest {
     comments: Option<Value>,
     architecture: Option<Architecture>,
     autoupdate: Option<Value>, // It is used by scoop to check for autoupdates, currrently out-of-scope for Scoopie.
-    checkver: Option<Value>,   // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
+    checkver: Option<Value>, // It is used by scoop to check for updated versions, currrently out-of-scope for Scoopie.
     depends: Option<Value>,
     suggest: Option<Value>,
     env_add_path: Option<Value>,
@@ -60,7 +60,9 @@ where
     let value: Option<Value> = Deserialize::deserialize(deserializer)?;
 
     match value {
-        Some(Value::String(s)) => Ok(Some(vec![Url::parse(&s).map_err(serde::de::Error::custom)?])),
+        Some(Value::String(s)) => Ok(Some(
+            vec![Url::parse(&s).map_err(serde::de::Error::custom)?],
+        )),
         Some(Value::Array(arr)) => arr
             .iter()
             .map(|url| match url {
