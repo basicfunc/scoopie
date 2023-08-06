@@ -1,6 +1,8 @@
 use argh::FromArgs;
 
+use super::prelude::*;
 use crate::core::bucket::*;
+use crate::error::ScoopieError;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Search available apps from buckets (supports full-text search)
@@ -10,8 +12,8 @@ pub struct QueryCommand {
     query: String,
 }
 
-impl QueryCommand {
-    pub fn query(&self) {
+impl ExecuteCommand for QueryCommand {
+    fn exec(&self) -> Result<(), ScoopieError> {
         let term = self.query.trim();
 
         let res = match term.contains(" ") {
@@ -20,9 +22,9 @@ impl QueryCommand {
                 Bucket::query(QueryKind::FULLTEXT, format!("{query}*"))
             }
             false => Bucket::query(QueryKind::KEYWORD, format!("{term}*")),
-        }
-        .unwrap();
+        }?;
 
         println!("{}", res);
+        Ok(())
     }
 }

@@ -40,12 +40,16 @@ pub enum ScoopieError {
     EnvResolve,
     #[error("While removing environment variable")]
     EnvRemove,
+    #[error("While setting value for environment variable")]
+    EnvSet,
     #[error("Failed to create directory: {0:?}")]
     FailedToMkdir(PathBuf),
     #[error("Permission Denied")]
     PermissionDenied,
     #[error("{0:?} file not found")]
     FileNotExist(PathBuf),
+    #[error("Unable to open environment in current user registry")]
+    UnableToOpenEnvRegistry,
     #[error("Your CPU architecture is not supported")]
     UnknownArch,
     #[error("Unknown")]

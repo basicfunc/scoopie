@@ -3,6 +3,9 @@ use crate::core::{bucket::*, config::*, download::*};
 use argh::FromArgs;
 use rayon::prelude::*;
 
+use super::prelude::*;
+use crate::error::ScoopieError;
+
 #[derive(FromArgs, PartialEq, Debug)]
 /// Install specified app or update app(s)
 #[argh(subcommand, name = "install")]
@@ -23,23 +26,27 @@ pub struct InstallCommand {
     update_all: bool,
 }
 
-impl InstallCommand {
-    pub fn install(&self) {
+impl ExecuteCommand for InstallCommand {
+    fn exec(&self) -> Result<(), ScoopieError> {
         if self.sync {
-            let config = Config::read().unwrap();
-            let buckets = config.known_buckets();
-            let status: Result<Vec<_>, _> = buckets.par_iter().map(Bucket::sync_from).collect();
-            let status = status.unwrap();
+            let config = Config::read()?;
+            let status = config
+                .known_buckets()
+                .par_iter()
+                .map(Bucket::sync_from)
+                .collect::<Result<Vec<_>, _>>()?;
+
             println!("{:?}", status);
+            Ok(())
         } else if self.download_only {
             match &self.app {
                 Some(app) => {
-                    let downloader = Downloader::build_for(app).unwrap();
-                    let status = downloader.download(true);
+                    let status = Downloader::build_for(app)?.download(true);
                     println!("{:?}", status);
                 }
                 None => eprintln!("App argument required"),
-            }
+            };
+            Ok(())
         } else {
             todo!()
         }

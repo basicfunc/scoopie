@@ -221,7 +221,7 @@ impl Downloader {
                 };
 
                 match s.iter().any(|st| {
-                    (st.statuscode().is_server_error() || st.statuscode().is_client_error())
+                    st.statuscode().is_server_error() || st.statuscode().is_client_error()
                 }) {
                     true => DownloadStatus::DownloadFailed,
                     false => match (verify, self.item.verify()?) {
