@@ -32,3 +32,4 @@ tokio = { version = "1.29.1", features = ["full"] }
 toml = "0.7.5"
 trauma = "2.2.3"
 url = { version = "2.4.0", features = ["serde"] }
+winreg = "0.50.0"
