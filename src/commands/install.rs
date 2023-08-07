@@ -1,7 +1,6 @@
-use crate::core::{bucket::*, config::*, download::*};
+use crate::core::{buckets::*, download::*};
 
 use argh::FromArgs;
-use rayon::prelude::*;
 
 use super::prelude::*;
 use crate::error::ScoopieError;
@@ -29,13 +28,7 @@ pub struct InstallCommand {
 impl ExecuteCommand for InstallCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
         if self.sync {
-            let config = Config::read()?;
-            let status = config
-                .known_buckets()
-                .par_iter()
-                .map(Bucket::sync_from)
-                .collect::<Result<Vec<_>, _>>()?;
-
+            let status = Buckets::sync();
             println!("{:?}", status);
             Ok(())
         } else if self.download_only {

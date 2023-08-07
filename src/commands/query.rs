@@ -1,7 +1,7 @@
 use argh::FromArgs;
 
 use super::prelude::*;
-use crate::core::bucket::*;
+use crate::core::buckets::*;
 use crate::error::ScoopieError;
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -14,17 +14,8 @@ pub struct QueryCommand {
 
 impl ExecuteCommand for QueryCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
-        let term = self.query.trim();
-
-        let res = match term.contains(" ") {
-            true => {
-                let query = term.split_whitespace().collect::<Vec<&str>>().join(" AND ");
-                Bucket::query(QueryKind::FULLTEXT, format!("{query}*"))
-            }
-            false => Bucket::query(QueryKind::KEYWORD, format!("{term}*")),
-        }?;
-
-        println!("{}", res);
+        let res = Buckets::query(self.query.trim())?;
+        println!("{res}");
         Ok(())
     }
 }

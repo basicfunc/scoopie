@@ -2,7 +2,11 @@ use argh::FromArgs;
 use dirs::home_dir;
 use std::path::PathBuf;
 
-use crate::{core::config::*, error::ScoopieError, utils::*};
+use crate::{
+    core::{buckets::write_default_metadata, config::*},
+    error::ScoopieError,
+    utils::*,
+};
 
 use super::prelude::*;
 
@@ -38,6 +42,8 @@ impl ExecuteCommand for InitCommand {
         ];
 
         directories.into_iter().try_for_each(PathBuf::create)?;
+
+        write_default_metadata()?;
 
         let config_dir = home_dir.join(".config");
 

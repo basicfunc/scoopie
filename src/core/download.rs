@@ -6,7 +6,7 @@ use trauma::{download::Download, downloader::DownloaderBuilder};
 use url::Url;
 
 use {
-    super::{bucket::*, config::*, verify::Hash},
+    super::{buckets::*, config::*, verify::Hash},
     crate::error::*,
 };
 
@@ -52,89 +52,11 @@ impl FetchFromBucket<&str> for DownloadEntry {
     type Error = ScoopieError;
 
     fn fetch(app_name: &str) -> Result<Self, Self::Error> {
-        let res = Bucket::query(QueryKind::APP, app_name.into())?;
-
-        let manifest = res
-            .entries()
-            .par_iter()
-            .find_map_first(|(_, entries)| {
-                entries
-                    .par_iter()
-                    .find_first(|entry| entry.app_name == app_name)
-                    .map(|entry| entry.manifest.to_owned())
-            })
-            .ok_or_else(|| ScoopieError::Download(DownloadError::NoAppFound(app_name.into())))?;
-
-        let app_name: String = app_name.into();
-        let version = manifest.version.clone();
-
-        let metadata: Vec<Metadata> = manifest
-            .url()
-            .into_par_iter()
-            .zip(manifest.hash().into_par_iter())
-            .map(|(url, hash)| {
-                let file = format!(
-                    "{}_{}{}{}",
-                    app_name,
-                    version,
-                    url.path(),
-                    url.fragment().unwrap_or("")
-                )
-                .replace("/", "_");
-
-                Metadata(file, hash, url)
-            })
-            .collect();
-
-        Ok(Self {
-            app_name,
-            version,
-            metadata,
-        })
+        todo!()
     }
 
     fn fetch_from(app_name: &str, bucket_name: &str) -> Result<Self, Self::Error> {
-        let res = Bucket::query(QueryKind::APP, app_name.into())?;
-
-        let manifest = res
-            .entries()
-            .get(bucket_name)
-            .map(|entries| entries.par_iter().find_first(|x| x.app_name == app_name))
-            .flatten()
-            .map(|entry| entry.manifest.to_owned())
-            .ok_or_else(|| {
-                ScoopieError::Download(DownloadError::NoAppFoundInBucket(
-                    app_name.into(),
-                    bucket_name.into(),
-                ))
-            })?;
-
-        let app_name: String = app_name.into();
-        let version = manifest.version.clone();
-
-        let metadata: Vec<Metadata> = manifest
-            .url()
-            .into_par_iter()
-            .zip(manifest.hash().into_par_iter())
-            .map(|(url, hash)| {
-                let file = format!(
-                    "{}_{}{}{}",
-                    app_name,
-                    version,
-                    url.path(),
-                    url.fragment().unwrap_or("")
-                )
-                .replace("/", "_");
-
-                Metadata(file, hash, url)
-            })
-            .collect();
-
-        Ok(Self {
-            app_name,
-            version,
-            metadata,
-        })
+        todo!()
     }
 }
 
@@ -191,7 +113,7 @@ impl Builder<&str> for Downloader {
 
         let download_dir = Config::cache_dir()?;
 
-        println!("Found: {} v{}", item.app_name, item.version);
+        println!("Found: {}  v{}", item.app_name, item.version);
 
         Ok(Self {
             item,

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::vec;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use url::Url;
 
 use crate::error::*;
 
-use super::config::*;
-use super::verify::{deserialize_hash, Hash};
+use crate::core::config::*;
+use crate::core::verify::{deserialize_hash, Hash};
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 /// This strictly follows Scoop's convention for app manifests, which could be found at: https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests
@@ -75,11 +75,9 @@ where
     }
 }
 
-impl TryInto<String> for Manifest {
-    type Error = ScoopieError;
-
-    fn try_into(self) -> Result<String, Self::Error> {
-        serde_json::to_string(&self).map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))
+impl ToString for Manifest {
+    fn to_string(&self) -> String {
+        json!(self).to_string()
     }
 }
 
