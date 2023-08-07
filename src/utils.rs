@@ -1,6 +1,6 @@
 use crate::error::ScoopieError;
 use std::{
-    fs::{remove_dir_all, DirBuilder},
+    fs::{remove_dir_all, remove_file, DirBuilder},
     path::PathBuf,
 };
 
@@ -40,16 +40,20 @@ impl EnvVar {
     }
 }
 
-pub trait RemoveDir {
+pub trait Remove {
     type Error;
-    fn rmdir(&self) -> Result<(), Self::Error>;
+    fn rm(&self) -> Result<(), Self::Error>;
 }
 
-impl RemoveDir for PathBuf {
+impl Remove for PathBuf {
     type Error = ScoopieError;
 
-    fn rmdir(&self) -> Result<(), Self::Error> {
-        remove_dir_all(&self).map_err(|err| match err.kind() {
+    fn rm(&self) -> Result<(), Self::Error> {
+        match self.is_file() {
+            true => remove_file(self),
+            false => remove_dir_all(&self),
+        }
+        .map_err(|err| match err.kind() {
             std::io::ErrorKind::NotFound => ScoopieError::FileNotExist(self.to_path_buf()),
             std::io::ErrorKind::PermissionDenied => ScoopieError::PermissionDenied,
             _ => ScoopieError::Unknown,
