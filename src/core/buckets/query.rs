@@ -6,41 +6,55 @@ use super::{Bucket, Buckets};
 use crate::core::config::*;
 use crate::error::*;
 
+use rayon::prelude::*;
 use regex::Regex;
 use serde_json::from_str;
 
-pub trait Query {
+pub enum QueryTerm {
+    App(String),
+    Regex(String),
+}
+
+pub trait Query<T> {
     type Error;
-    fn query(q: &str) -> Result<Self, Self::Error>
+    fn query(query: T) -> Result<Self, Self::Error>
     where
         Self: Sized;
 }
 
-impl Query for Buckets {
+impl Query<QueryTerm> for Buckets {
     type Error = ScoopieError;
 
-    fn query(q: &str) -> Result<Self, Self::Error> {
+    fn query(q: QueryTerm) -> Result<Self, Self::Error> {
         let buckets_dir = Config::buckets_dir()?;
         let buckets = Config::read()?.known_buckets();
 
-        let query = match q.contains(" ") {
-            true => q
-                .split_whitespace()
-                .map(|phrases| regex::escape(phrases))
-                .collect::<Vec<_>>()
-                .join("|"),
-            false => q.into(),
+        let query_func = match q {
+            QueryTerm::App(_) => <Bucket as QueryBucket<App>>::query,
+            QueryTerm::Regex(_) => <Bucket as QueryBucket<Rgx>>::query,
+        };
+
+        let query = match q {
+            QueryTerm::App(s) => s,
+            QueryTerm::Regex(s) => match s.contains(" ") {
+                true => s
+                    .split_whitespace()
+                    .map(regex::escape)
+                    .collect::<Vec<_>>()
+                    .join("|"),
+                false => s,
+            },
         };
 
         let buckets: HashMap<_, _> = buckets
-            .iter()
+            .into_par_iter()
             .filter_map(|(name, _)| {
-                let content = read_to_string(buckets_dir.join(name)).unwrap();
+                let content = read_to_string(buckets_dir.join(&name)).unwrap();
                 let bucket: Bucket = from_str(&content).unwrap();
-                let bucket = QueryBucket::<Rgx>::query(&bucket, &query);
+                let bucket = query_func(bucket, &query);
 
                 match !bucket.0.is_empty() {
-                    true => Some((name.to_string(), bucket)),
+                    true => Some((name, bucket)),
                     false => None,
                 }
             })
@@ -54,18 +68,18 @@ struct App;
 struct Rgx;
 
 trait QueryBucket<T> {
-    fn query(&self, q: &str) -> Self
+    fn query(self, q: &str) -> Self
     where
         Self: Sized;
 }
 
 impl QueryBucket<App> for Bucket {
-    fn query(&self, q: &str) -> Self {
+    fn query(self, q: &str) -> Self {
         Bucket(
             self.0
-                .iter()
+                .into_par_iter()
                 .filter_map(|(app_name, manifest)| match app_name == q {
-                    true => Some((app_name.clone(), manifest.clone())),
+                    true => Some((app_name, manifest)),
                     false => None,
                 })
                 .collect(),
@@ -74,13 +88,13 @@ impl QueryBucket<App> for Bucket {
 }
 
 impl QueryBucket<Rgx> for Bucket {
-    fn query(&self, q: &str) -> Self {
+    fn query(self, q: &str) -> Self {
         let re = Regex::new(q).unwrap();
         Bucket(
             self.0
                 .iter()
                 .filter_map(|(app_name, manifest)| {
-                    match re.is_match(&app_name) || re.is_match(&manifest.to_string()) {
+                    match re.is_match(&app_name) || re.is_match(&manifest.description) {
                         true => Some((app_name.clone(), manifest.clone())),
                         false => None,
                     }

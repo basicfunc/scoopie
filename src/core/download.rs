@@ -36,31 +36,33 @@ struct DownloadEntry {
     metadata: Vec<Metadata>,
 }
 
-trait FetchFromBucket<T> {
-    type Error;
-
-    fn fetch(app_name: T) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-
-    fn fetch_from(app_name: T, bucket_name: T) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-}
-
-impl FetchFromBucket<&str> for DownloadEntry {
-    type Error = ScoopieError;
-
-    fn fetch(app_name: &str) -> Result<Self, Self::Error> {
-        todo!()
-    }
-
-    fn fetch_from(app_name: &str, bucket_name: &str) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
 impl DownloadEntry {
+    fn new(app_name: String, manifest: Manifest) -> Self {
+        let metadata: Vec<Metadata> = manifest
+            .url()
+            .par_iter()
+            .zip(manifest.hash().par_iter())
+            .map(|(url, hash)| {
+                let file = format!(
+                    "{}_{}{}{}",
+                    app_name,
+                    &manifest.version,
+                    url.path(),
+                    url.fragment().unwrap_or("")
+                )
+                .replace("/", "_");
+
+                Metadata(file, hash.clone(), url.clone())
+            })
+            .collect();
+
+        Self {
+            app_name,
+            version: manifest.version,
+            metadata,
+        }
+    }
+
     fn get(&self) -> Result<Vec<Download>, ScoopieError> {
         self.metadata
             .par_iter()
@@ -102,10 +104,28 @@ impl Builder<&str> for Downloader {
     fn build_for(app_name: &str) -> Result<Self, Self::Error> {
         let query = app_name.trim().to_lowercase();
 
-        let item = match app_name.split_once('/') {
-            Some((bucket, app)) => DownloadEntry::fetch_from(app, bucket),
-            None => DownloadEntry::fetch(&query),
-        }?;
+        let item = match query.split_once('/') {
+            Some((bucket, app)) => {
+                let manifest = Buckets::query(QueryTerm::App(app.into()))?
+                    .get(bucket)
+                    .and_then(|bucket| bucket.get(app))
+                    .ok_or(ScoopieError::Download(DownloadError::NoAppFoundInBucket(
+                        app.into(),
+                        bucket.into(),
+                    )))?;
+
+                DownloadEntry::new(app.into(), manifest)
+            }
+            None => {
+                let manifest = Buckets::query(QueryTerm::App(app_name.into()))?
+                    .get_app(app_name)
+                    .ok_or(ScoopieError::Download(DownloadError::NoAppFound(
+                        app_name.into(),
+                    )))?;
+
+                DownloadEntry::new(app_name.into(), manifest)
+            }
+        };
 
         let download_cfg = Config::read()?.download();
         let max_retries = download_cfg.max_retries;
