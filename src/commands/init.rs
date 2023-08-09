@@ -1,5 +1,4 @@
 use argh::FromArgs;
-use dirs::home_dir;
 use std::path::PathBuf;
 
 use crate::{
@@ -20,7 +19,7 @@ pub struct InitCommand {
 
 impl ExecuteCommand for InitCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
-        let home_dir = home_dir().ok_or(ScoopieError::HomeDirUnavailable)?;
+        let home_dir = EnvVar::home_dir()?;
 
         let scoopie_path = match &self.path {
             Some(path) => path.absolute()?,

@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::error::*;
+use crate::utils::EnvVar;
 
-use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 
 pub trait Reader {
@@ -108,7 +108,7 @@ impl Reader for Config {
     type Error = ScoopieError;
 
     fn read() -> Result<Self, Self::Error> {
-        let home_dir = home_dir().ok_or(ScoopieError::UserDirUnavailable)?;
+        let home_dir = EnvVar::home_dir()?;
         let scoopie_config = home_dir.join(".config\\scoopie.json");
 
         match scoopie_config.exists() {

@@ -24,9 +24,6 @@ hex = "0.4.3"
 # For parllel computing
 rayon = "1.7.0"
 
-# Just to get home direcctory of user
-dirs = "5.0.1"
-
 # To clone buckets from remote
 git2 = "0.17.2"
 

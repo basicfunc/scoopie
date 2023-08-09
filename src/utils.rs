@@ -9,7 +9,18 @@ use winreg::{enums::*, RegKey};
 pub struct EnvVar;
 
 impl EnvVar {
-    pub fn home_dir() {}
+    pub fn home_dir() -> Result<PathBuf, ScoopieError> {
+        let curr_user = RegKey::predef(HKEY_CURRENT_USER);
+        let vars = curr_user
+            .open_subkey_with_flags("Volatile Environment", KEY_READ)
+            .map_err(|_| ScoopieError::UnableToOpenEnvRegistry)?;
+
+        let home_dir: String = vars
+            .get_value("USERPROFILE")
+            .map_err(|_| ScoopieError::UserDirUnavailable)?;
+
+        Ok(PathBuf::from(home_dir))
+    }
 
     pub fn create_or_update(key: &str, value: &str) -> Result<(), ScoopieError> {
         let curr_user = RegKey::predef(HKEY_CURRENT_USER);
