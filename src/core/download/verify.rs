@@ -1,9 +1,14 @@
-use digest::{Digest, FixedOutput};
-use md5::Md5;
+// To compute hashes
+use {
+    digest::Digest,
+    md5::Md5,
+    sha1::Sha1,
+    sha2::{Sha256, Sha512},
+};
+
+// To implement De/Serialization of Hash
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use sha1::Sha1;
-use sha2::{Sha256, Sha512};
 
 use std::{
     fs::File,
@@ -38,18 +43,19 @@ impl<'de> Deserialize<'de> for Hash {
     where
         D: Deserializer<'de>,
     {
-        let s: String = Deserialize::deserialize(deserializer)?;
+        let hash = {
+            let hash: String = Deserialize::deserialize(deserializer)?;
+            hash.trim_matches('"').to_owned()
+        };
 
-        let s = s.trim_matches('"');
-
-        let (hash_func, digest) = s.split_once(':').unwrap_or(("", s));
-        let digest = digest.to_string();
-
-        match hash_func {
-            "sha512" => Ok(Hash::SHA512(digest)),
-            "sha1" => Ok(Hash::SHA1(digest)),
-            "md5" => Ok(Hash::MD5(digest)),
-            _ => Ok(Hash::SHA256(digest)),
+        match hash.split_once(':') {
+            Some(("sha512", digest)) => Ok(Hash::SHA512(digest.to_lowercase())),
+            Some(("sha1", digest)) => Ok(Hash::SHA1(digest.to_lowercase())),
+            Some(("md5", digest)) => Ok(Hash::MD5(digest.to_lowercase())),
+            Some((func, _)) => Err(serde::de::Error::custom(format!(
+                "unsupported digest function: {func}"
+            ))),
+            None => Ok(Hash::SHA256(hash)),
         }
     }
 }
@@ -79,20 +85,25 @@ impl Hash {
         let mut buff: Vec<u8> = Vec::new();
         file.read_to_end(&mut buff)?;
 
-        fn calc_hash<D: Digest + FixedOutput>(data: &[u8]) -> String {
-            let mut hasher = D::new();
-            Digest::update(&mut hasher, data);
-            let res = hasher.finalize_fixed();
-            hex::encode(res)
-        }
-
-        let (expected_hash, original_hash) = match self {
-            Hash::SHA256(x) => (x, calc_hash::<Sha256>(&buff)),
-            Hash::SHA512(x) => (x, calc_hash::<Sha512>(&buff)),
-            Hash::SHA1(x) => (x, calc_hash::<Sha1>(&buff)),
-            Hash::MD5(x) => (x, calc_hash::<Md5>(&buff)),
+        let (expected_hash, computed_hash) = match self {
+            Hash::SHA256(hash) => (
+                hash.to_lowercase(),
+                hex::encode(Sha256::digest(buff)).to_lowercase(),
+            ),
+            Hash::SHA512(hash) => (
+                hash.to_lowercase(),
+                hex::encode(Sha512::digest(buff)).to_lowercase(),
+            ),
+            Hash::SHA1(hash) => (
+                hash.to_lowercase(),
+                hex::encode(Sha1::digest(buff)).to_lowercase(),
+            ),
+            Hash::MD5(hash) => (
+                hash.to_lowercase(),
+                hex::encode(Md5::digest(buff)).to_lowercase(),
+            ),
         };
 
-        Ok(expected_hash.to_lowercase() == original_hash.to_lowercase())
+        Ok(expected_hash == computed_hash)
     }
 }

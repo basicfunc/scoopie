@@ -5,10 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use url::Url;
 
-use crate::error::*;
-
 use crate::core::config::*;
-use crate::core::verify::{deserialize_hash, Hash};
+use crate::core::download::{deserialize_hash, Hash};
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 /// This strictly follows Scoop's convention for app manifests, which could be found at: https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests

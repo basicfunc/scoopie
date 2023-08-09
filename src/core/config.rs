@@ -57,7 +57,7 @@ impl Write<&Path> for Config {
     type Error = ScoopieError;
     fn write(path: &Path) -> Result<(), Self::Error> {
         let default_config: Config = Config::default();
-        let config = toml::to_string_pretty(&default_config)
+        let config = serde_json::to_string_pretty(&default_config)
             .map_err(|_| ScoopieError::Config(crate::error::ConfigError::InvalidToml))?;
 
         fs::write(path, config).map_err(|_| ScoopieError::Init(InitError::ConfigWrite))
@@ -99,7 +99,7 @@ impl TryFrom<PathBuf> for Config {
         let content = String::from_utf8(buffer)
             .map_err(|_| ScoopieError::Config(ConfigError::InvalidData))?;
 
-        toml::from_str::<Config>(&content)
+        serde_json::from_str::<Config>(&content)
             .map_err(|_| ScoopieError::Config(ConfigError::InvalidToml))
     }
 }
@@ -109,7 +109,7 @@ impl Reader for Config {
 
     fn read() -> Result<Self, Self::Error> {
         let home_dir = home_dir().ok_or(ScoopieError::UserDirUnavailable)?;
-        let scoopie_config = home_dir.join(".config\\scoopie.toml");
+        let scoopie_config = home_dir.join(".config\\scoopie.json");
 
         match scoopie_config.exists() {
             true => Config::try_from(scoopie_config),
@@ -121,19 +121,6 @@ impl Reader for Config {
 impl Config {
     pub fn known_buckets(self) -> HashMap<String, String> {
         self.buckets
-    }
-
-    pub fn latest_buckets(&self) -> Result<Vec<PathBuf>, ScoopieError> {
-        let buckets_dir = Config::buckets_dir()?;
-
-        match self.buckets.is_empty() {
-            true => Err(ScoopieError::Config(ConfigError::NoBucketsConfigured)),
-            false => Ok(self
-                .buckets
-                .iter()
-                .map(|(name, _)| PathBuf::from(buckets_dir.join(format!("{name}.db"))))
-                .collect::<Vec<PathBuf>>()),
-        }
     }
 
     pub fn download(&self) -> Download {

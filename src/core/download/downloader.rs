@@ -6,7 +6,8 @@ use trauma::{download::Download, downloader::DownloaderBuilder};
 use url::Url;
 
 use {
-    super::{buckets::*, config::*, verify::Hash},
+    super::verify::Hash,
+    crate::core::{buckets::*, config::*},
     crate::error::*,
 };
 
@@ -107,8 +108,7 @@ impl Builder<&str> for Downloader {
         let item = match query.split_once('/') {
             Some((bucket, app)) => {
                 let manifest = Buckets::query(QueryTerm::App(app.into()))?
-                    .get(bucket)
-                    .and_then(|bucket| bucket.get(app))
+                    .get_app_from(app, bucket)
                     .ok_or(ScoopieError::Download(DownloadError::NoAppFoundInBucket(
                         app.into(),
                         bucket.into(),

@@ -51,17 +51,16 @@ impl ExecuteCommand for InitCommand {
             PathBuf::create(config_dir.clone())?;
         }
 
-        let scoopie_config = config_dir.join("scoopie.toml");
+        let scoopie_config = config_dir.join("scoopie.json");
 
         if !scoopie_config.exists() {
             Config::write(&scoopie_config)?;
         }
 
-        EnvVar::new(
+        EnvVar::create_or_update(
             "SCOOPIE_HOME",
             scoopie_path.as_path().to_str().unwrap_or_default(),
-        )
-        .create_or_update()?;
+        )?;
 
         println!(
             "🎊 Congrats! Scoopie initialized.\nLocated at: {}\nConfig at: {}",

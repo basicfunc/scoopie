@@ -6,28 +6,19 @@ use std::{
 
 use winreg::{enums::*, RegKey};
 
-pub struct EnvVar {
-    key: String,
-    value: String,
-}
+pub struct EnvVar;
 
 impl EnvVar {
-    pub fn new(key: &str, value: &str) -> Self {
-        Self {
-            key: key.into(),
-            value: value.into(),
-        }
-    }
+    pub fn home_dir() {}
 
-    pub fn create_or_update(&self) -> Result<(), ScoopieError> {
+    pub fn create_or_update(key: &str, value: &str) -> Result<(), ScoopieError> {
         let curr_user = RegKey::predef(HKEY_CURRENT_USER);
 
         let env = curr_user
             .open_subkey_with_flags("Environment", KEY_ALL_ACCESS)
             .map_err(|_| ScoopieError::UnableToOpenEnvRegistry)?;
 
-        env.set_value(&self.key, &self.value)
-            .map_err(|_| ScoopieError::EnvSet)
+        env.set_value(key, &value).map_err(|_| ScoopieError::EnvSet)
     }
 
     pub fn remove(key: &str) -> Result<(), ScoopieError> {
