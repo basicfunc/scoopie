@@ -9,6 +9,7 @@ use {
     super::verify::Hash,
     crate::core::{buckets::*, config::*},
     crate::error::*,
+    crate::utils::*,
 };
 
 #[derive(Debug)]
@@ -39,11 +40,11 @@ struct DownloadEntry {
 
 impl DownloadEntry {
     fn new(app_name: String, manifest: Manifest) -> Self {
-        let metadata: Vec<Metadata> = manifest
-            .url()
-            .par_iter()
-            .zip(manifest.hash().par_iter())
-            .map(|(url, hash)| {
+        let urls = manifest.url();
+        let hashes = manifest.hash();
+
+        let metadata: Vec<Metadata> = Zipper::zip(urls.iter(), hashes.iter())
+            .map(|(url, hash)| -> Metadata {
                 let file = format!(
                     "{}_{}{}{}",
                     app_name,
@@ -133,7 +134,11 @@ impl Builder<&str> for Downloader {
 
         let download_dir = Config::cache_dir()?;
 
-        println!("Found: {}  v{}", item.app_name, item.version);
+        println!("Found: {}  (v{})", item.app_name, item.version);
+
+        let total_size: u64 = item.metadata.iter().map(|m| get_package_size(&m.2)).sum();
+
+        println!("Total download size: {total_size} bytes");
 
         Ok(Self {
             item,
@@ -177,4 +182,36 @@ impl Downloader {
 
         Ok(status)
     }
+}
+
+fn get_package_size(url: &Url) -> u64 {
+    // Create a reqwest Client
+    let client = reqwest::blocking::Client::new();
+
+    // Create a HEAD request using reqwest
+    let response = client.head(url.clone()).send().unwrap();
+
+    // Get the content disposition header
+    if let Some(content_disposition) = response.headers().get(reqwest::header::CONTENT_DISPOSITION)
+    {
+        if let Some(filename) = content_disposition.to_str().ok().and_then(|header| {
+            let param = "filename=";
+            let start = header.find(param)? + param.len();
+            let end = header[start..].find(';').unwrap_or(header[start..].len());
+            Some(header[start..start + end].to_owned())
+        }) {
+            println!("Suggested Filename: {}", filename);
+        } else {
+            println!("Filename not found in Content-Disposition header");
+        }
+    } else {
+        println!("Content-Disposition header not found");
+    }
+
+    let response = reqwest::blocking::Client::new()
+        .head(url.clone())
+        .send()
+        .unwrap();
+
+    response.content_length().unwrap_or_default()
 }

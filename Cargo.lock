@@ -1406,6 +1406,7 @@ dependencies = [
  "md-5",
  "rayon",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "sha1",
