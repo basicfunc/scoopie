@@ -28,7 +28,7 @@ rayon = "1.7.0"
 git2 = "0.17.2"
 
 # To query through buckets
-regex = "1.9.3"
+regex-lite = "0.1.0"
 tokio = { version = "1.29.1", features = ["rt"] }
 
 # For de/serialization

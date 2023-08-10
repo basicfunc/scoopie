@@ -108,21 +108,19 @@ impl Builder<&str> for Downloader {
 
         let item = match query.split_once('/') {
             Some((bucket, app)) => {
-                let manifest = Buckets::query(QueryTerm::App(app.into()))?
-                    .get_app_from(app, bucket)
-                    .ok_or(ScoopieError::Download(DownloadError::NoAppFoundInBucket(
+                let manifest = Buckets::query_app(app)?.get_app_from(app, bucket).ok_or(
+                    ScoopieError::Download(DownloadError::NoAppFoundInBucket(
                         app.into(),
                         bucket.into(),
-                    )))?;
+                    )),
+                )?;
 
                 DownloadEntry::new(app.into(), manifest)
             }
             None => {
-                let manifest = Buckets::query(QueryTerm::App(app_name.into()))?
-                    .get_app(app_name)
-                    .ok_or(ScoopieError::Download(DownloadError::NoAppFound(
-                        app_name.into(),
-                    )))?;
+                let manifest = Buckets::query_app(app_name)?.get_app(app_name).ok_or(
+                    ScoopieError::Download(DownloadError::NoAppFound(app_name.into())),
+                )?;
 
                 DownloadEntry::new(app_name.into(), manifest)
             }
@@ -189,29 +187,7 @@ fn get_package_size(url: &Url) -> u64 {
     let client = reqwest::blocking::Client::new();
 
     // Create a HEAD request using reqwest
-    let response = client.head(url.clone()).send().unwrap();
-
-    // Get the content disposition header
-    if let Some(content_disposition) = response.headers().get(reqwest::header::CONTENT_DISPOSITION)
-    {
-        if let Some(filename) = content_disposition.to_str().ok().and_then(|header| {
-            let param = "filename=";
-            let start = header.find(param)? + param.len();
-            let end = header[start..].find(';').unwrap_or(header[start..].len());
-            Some(header[start..start + end].to_owned())
-        }) {
-            println!("Suggested Filename: {}", filename);
-        } else {
-            println!("Filename not found in Content-Disposition header");
-        }
-    } else {
-        println!("Content-Disposition header not found");
-    }
-
-    let response = reqwest::blocking::Client::new()
-        .head(url.clone())
-        .send()
-        .unwrap();
+    let response = client.get(url.clone()).send().unwrap();
 
     response.content_length().unwrap_or_default()
 }

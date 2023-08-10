@@ -14,7 +14,7 @@ pub struct QueryCommand {
 
 impl ExecuteCommand for QueryCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
-        let res = Buckets::query(QueryTerm::Regex(self.query.trim().into()))?;
+        let res = Buckets::query_fts(self.query.trim().into())?;
         println!("{res}");
         Ok(())
     }
