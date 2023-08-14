@@ -36,10 +36,6 @@ impl Display for SyncStatus {
 }
 
 impl Bucket {
-    fn count(&self) -> usize {
-        self.0.iter().count()
-    }
-
     fn write_to(&self, path: &PathBuf) {
         let json = json!(self.0).to_string();
 

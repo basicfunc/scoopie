@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::vec;
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -87,6 +88,18 @@ impl Manifest {
         }
     }
 
+    pub fn download_entry(&self, app_name: &str) -> Vec<(Url, Hash, String)> {
+        use std::iter::zip;
+
+        zip(self.url(), self.hash())
+            .map(|(url, hash)| {
+                let file_name = extract_file_name(app_name, &self.version, &url);
+
+                (url, hash, file_name)
+            })
+            .collect()
+    }
+
     pub fn hash(&self) -> Vec<Hash> {
         match &self.architecture {
             Some(arch) => arch.get().hash(),
@@ -138,4 +151,17 @@ impl Attrs {
     fn hash(self) -> Vec<Hash> {
         self.hash.unwrap_or_default()
     }
+}
+
+fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
+    const TO_BE_REMOVED_CHARS: [&str; 5] = [":", "#", "?", "&", "="];
+    let url = url.as_str().to_string();
+
+    let sanitized_fname = TO_BE_REMOVED_CHARS
+        .iter()
+        .fold(url, |fname, &c| fname.replace(c, ""))
+        .replace("//", "_")
+        .replace("/", "_");
+
+    format!("{app_name}#{version}#{sanitized_fname}")
 }

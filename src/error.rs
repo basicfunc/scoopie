@@ -44,6 +44,12 @@ pub enum ScoopieError {
     PermissionDenied,
     #[error("{0:?} file not found")]
     FileNotExist(PathBuf),
+    #[error("Failed to open file: {0:?}")]
+    FailedToOpenFile(PathBuf),
+    #[error("Failed to read file: {0:?}")]
+    FailedToReadFile(PathBuf),
+    #[error("Failed to get metadata for file: {0:?}")]
+    FailedToGetMetadata(PathBuf),
     #[error("Unable to open environment in current user registry")]
     UnableToOpenEnvRegistry,
     #[error("Your CPU architecture is not supported")]
@@ -68,6 +74,10 @@ pub enum DownloadError {
     UnableToCreateFile(String),
     #[error("Unable to get HTTP client, possible reasons could be system configuration or network error")]
     UnableToGetClient,
+    #[error("Failed to create runtime for downloader")]
+    FailedToCreateRunTime,
+    #[error("Found wrong digest for {0}")]
+    WrongDigest(String),
 }
 
 #[derive(Debug, Error)]
@@ -112,6 +122,4 @@ pub enum ConfigError {
     UnexpectedEof,
     #[error("Invalid TOML")]
     InvalidToml,
-    #[error("No buckets configured in config")]
-    NoBucketsConfigured,
 }

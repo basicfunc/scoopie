@@ -34,7 +34,7 @@ impl ExecuteCommand for InstallCommand {
         } else if self.download_only {
             match &self.app {
                 Some(app) => {
-                    let status = Downloader::build_for(app)?.download(true);
+                    let status = Downloader::download(app, true);
                     println!("{:?}", status);
                 }
                 None => eprintln!("App argument required"),

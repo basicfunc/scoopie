@@ -10,11 +10,9 @@ use {
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-use std::{
-    fs::File,
-    io::{self, Read},
-    path::PathBuf,
-};
+use crate::error::ScoopieError;
+
+use std::{fs::File, io::Read, path::PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum Hash {
@@ -80,10 +78,12 @@ where
 }
 
 impl Hash {
-    pub fn verify(&self, file: &PathBuf) -> Result<bool, io::Error> {
-        let mut file = File::open(file)?;
+    pub fn verify(&self, path: &PathBuf) -> Result<bool, ScoopieError> {
+        let mut file =
+            File::open(path).map_err(|_| ScoopieError::FailedToOpenFile(path.to_path_buf()))?;
         let mut buff: Vec<u8> = Vec::new();
-        file.read_to_end(&mut buff)?;
+        file.read_to_end(&mut buff)
+            .map_err(|_| ScoopieError::FailedToReadFile(path.to_path_buf()))?;
 
         let (expected_hash, computed_hash) = match self {
             Hash::SHA256(hash) => (
