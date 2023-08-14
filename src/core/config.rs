@@ -123,8 +123,12 @@ impl Config {
         self.buckets
     }
 
-    pub fn download(&self) -> Download {
-        self.download.to_owned()
+    pub fn list_buckets(self) -> Vec<String> {
+        self.buckets.into_keys().collect()
+    }
+
+    pub fn download(self) -> Download {
+        self.download
     }
 }
 
@@ -140,7 +144,12 @@ pub trait DefaultDirs {
 impl DefaultDirs for Config {
     fn home_dir() -> Result<PathBuf, ScoopieError> {
         let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
-        Ok(PathBuf::from(scoopie_home))
+        let scoopie_home = PathBuf::from(scoopie_home);
+
+        match scoopie_home.exists() {
+            true => Ok(scoopie_home),
+            false => Err(ScoopieError::HomeDirUnavailable),
+        }
     }
 
     fn buckets_dir() -> Result<PathBuf, ScoopieError> {

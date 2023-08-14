@@ -7,15 +7,11 @@ pub enum ScoopieError {
     #[error("While syncing repositories, {0}")]
     Sync(SyncError),
     #[error("{0}")]
-    Database(DatabaseError),
-    #[error("{0}")]
     Bucket(BucketError),
     #[error("{0}")]
     Init(InitError),
     #[error("While reading config, {0}")]
     Config(ConfigError),
-    #[error("{0}")]
-    Query(QueryError),
     #[error("{0}")]
     Download(DownloadError),
     #[error("User directory unavailable")]
@@ -62,6 +58,16 @@ pub enum DownloadError {
     NoAppFound(String),
     #[error("App: \"{0}\" is not available in {1} repo.")]
     NoAppFoundInBucket(String, String),
+    #[error("Unable to write to file: {0:?}")]
+    FlushFile(PathBuf),
+    #[error("Unable to write downloaded chunk to file: {0:?}")]
+    ChunkWrite(PathBuf),
+    #[error("Unable to download chunk while downloading app: {0}")]
+    UnableToGetChunk(String),
+    #[error("Unable to create file while downloading app: {0}")]
+    UnableToCreateFile(String),
+    #[error("Unable to get HTTP client, possible reasons could be system configuration or network error")]
+    UnableToGetClient,
 }
 
 #[derive(Debug, Error)]
@@ -74,18 +80,6 @@ pub enum SyncError {
     UnableToGetHead,
     #[error("Unable to get latest commit of repositoy")]
     UnableToGetCommit,
-}
-
-#[derive(Debug, Error)]
-pub enum DatabaseError {
-    #[error("Unable to open database")]
-    UnableToOpen,
-    #[error("Failed to create database")]
-    FailedToCreateTable,
-    #[error("Failed to make statement for database")]
-    FailedToMkStmt,
-    #[error("Failed to insert mainfest to database")]
-    FailedInsertion,
 }
 
 #[derive(Debug, Error)]
@@ -104,8 +98,6 @@ pub enum BucketError {
 pub enum InitError {
     #[error("Config write error")]
     ConfigWrite,
-    #[error("Unable to set environment variable")]
-    UnableToSetEnvVar,
 }
 
 #[derive(Debug, Error)]
@@ -122,14 +114,4 @@ pub enum ConfigError {
     InvalidToml,
     #[error("No buckets configured in config")]
     NoBucketsConfigured,
-}
-
-#[derive(Debug, Error)]
-pub enum QueryError {
-    #[error("Failed to retrieve data")]
-    FailedToRetrieveData,
-    // #[error("Found invalid JSON while retrieving data")]
-    // InavlidJSONData,
-    // #[error("Failed to query")]
-    // FailedToQuery,
 }

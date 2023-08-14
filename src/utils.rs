@@ -102,15 +102,3 @@ impl Absolute for PathBuf {
         ))
     }
 }
-
-pub struct Zipper;
-
-impl Zipper {
-    pub fn zip<T, U>(iter1: T, iter2: U) -> impl Iterator<Item = (T::Item, U::Item)>
-    where
-        T: Iterator,
-        U: Iterator,
-    {
-        iter1.zip(iter2)
-    }
-}

@@ -20,7 +20,7 @@ impl Query<&str> for Buckets {
 
     fn query_fts(query: &str) -> Result<Self, Self::Error> {
         let buckets_dir = Config::buckets_dir()?;
-        let buckets = Config::read()?.known_buckets();
+        let buckets = Config::read()?.list_buckets();
 
         let query = match query.contains(" ") {
             true => query
@@ -31,7 +31,7 @@ impl Query<&str> for Buckets {
             false => query.into(),
         };
 
-        let predicate = |(bucket_name, _): (String, _)| -> Option<(String, Bucket)> {
+        let predicate = |bucket_name: String| -> Option<(String, Bucket)> {
             let content = read_to_string(buckets_dir.join(&bucket_name)).unwrap();
             let bucket: Bucket = from_str(&content).unwrap();
             let bucket: Bucket = bucket.query_fts(&query);
@@ -49,9 +49,9 @@ impl Query<&str> for Buckets {
 
     fn query_app(query: &str) -> Result<Self, Self::Error> {
         let buckets_dir = Config::buckets_dir()?;
-        let buckets = Config::read()?.known_buckets();
+        let buckets = Config::read()?.list_buckets();
 
-        let predicate = |(bucket_name, _): (String, _)| -> Option<(String, Bucket)> {
+        let predicate = |bucket_name: String| -> Option<(String, Bucket)> {
             let content = read_to_string(buckets_dir.join(&bucket_name)).unwrap();
             let bucket: Bucket = from_str(&content).unwrap();
             let bucket: Bucket = bucket.query_app(&query);
