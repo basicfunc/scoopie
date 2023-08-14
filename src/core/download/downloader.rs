@@ -1,15 +1,17 @@
+use std::fs::{self, File};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::{cmp::min, format};
 
-use rayon::prelude::*;
+use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
-use trauma::{download::Download, downloader::DownloaderBuilder};
 use url::Url;
 
 use {
     super::verify::Hash,
     crate::core::{buckets::*, config::*},
     crate::error::*,
-    crate::utils::*,
 };
 
 #[derive(Debug)]
@@ -22,20 +24,11 @@ pub enum DownloadStatus {
 }
 
 #[derive(Debug)]
-struct Metadata(String, Hash, Url);
-
-impl Metadata {
-    #[inline]
-    fn exists(&self) -> Result<bool, ScoopieError> {
-        Ok(Config::cache_dir()?.join(&self.0).exists())
-    }
-}
-
-#[derive(Debug)]
 struct DownloadEntry {
     app_name: String,
     version: String,
-    metadata: Vec<Metadata>,
+    urls: Vec<Url>,
+    hashes: Vec<Hash>,
 }
 
 impl DownloadEntry {
@@ -43,46 +36,12 @@ impl DownloadEntry {
         let urls = manifest.url();
         let hashes = manifest.hash();
 
-        let metadata: Vec<Metadata> = Zipper::zip(urls.iter(), hashes.iter())
-            .map(|(url, hash)| -> Metadata {
-                let file = format!(
-                    "{}_{}{}{}",
-                    app_name,
-                    &manifest.version,
-                    url.path(),
-                    url.fragment().unwrap_or("")
-                )
-                .replace("/", "_");
-
-                Metadata(file, hash.clone(), url.clone())
-            })
-            .collect();
-
         Self {
             app_name,
             version: manifest.version,
-            metadata,
+            urls,
+            hashes,
         }
-    }
-
-    fn get(&self) -> Result<Vec<Download>, ScoopieError> {
-        self.metadata
-            .par_iter()
-            .filter_map(|m| match m.exists() {
-                Ok(true) => None,
-                Ok(false) => Some(Ok(Download::new(&m.2, &m.0))),
-                Err(err) => Some(Err(err)),
-            })
-            .collect()
-    }
-
-    fn verify(&self) -> Result<bool, ScoopieError> {
-        let download_dir = Config::cache_dir()?;
-        Ok(self
-            .metadata
-            .par_iter()
-            .map(|m| m.1.verify(&PathBuf::from(download_dir.join(&m.0))).unwrap())
-            .all(|v| v == true))
     }
 }
 
@@ -134,10 +93,6 @@ impl Builder<&str> for Downloader {
 
         println!("Found: {}  (v{})", item.app_name, item.version);
 
-        let total_size: u64 = item.metadata.iter().map(|m| get_package_size(&m.2)).sum();
-
-        println!("Total download size: {total_size} bytes");
-
         Ok(Self {
             item,
             max_retries,
@@ -148,46 +103,88 @@ impl Builder<&str> for Downloader {
 }
 
 impl Downloader {
-    pub fn download(&self, verify: bool) -> Result<DownloadStatus, ScoopieError> {
-        let dm = DownloaderBuilder::new()
-            .concurrent_downloads(self.concurrent)
-            .retries(self.max_retries)
-            .directory(self.download_dir.to_path_buf())
-            .build();
+    pub fn download(&self, verify: bool) -> Result<Vec<DownloadStatus>, ScoopieError> {
+        let app_name = &self.item.app_name;
+        let version = &self.item.version;
 
-        let downloads = self.item.get()?;
+        let rt = Runtime::new().unwrap();
 
-        let status = match downloads.is_empty() {
-            true => DownloadStatus::AlreadyInCache,
-            false => {
-                let s = {
-                    let rt = Runtime::new().unwrap();
-                    rt.block_on(dm.download(&downloads))
-                };
-
-                match s.iter().any(|st| {
-                    st.statuscode().is_server_error() || st.statuscode().is_client_error()
-                }) {
-                    true => DownloadStatus::DownloadFailed,
-                    false => match (verify, self.item.verify()?) {
-                        (true, true) => DownloadStatus::DownloadedAndVerified,
-                        (true, false) => DownloadStatus::DownloadedAndVerifyFailed,
-                        (false, _) => DownloadStatus::Downloaded,
-                    },
-                }
-            }
-        };
-
-        Ok(status)
+        self.item
+            .urls
+            .iter()
+            .map(|url| rt.block_on(download(&app_name, &version, url, &self.download_dir)))
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 
-fn get_package_size(url: &Url) -> u64 {
-    // Create a reqwest Client
-    let client = reqwest::blocking::Client::new();
+fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
+    const INVALID_CHARS: [&str; 5] = [":", "#", "?", "&", "="];
+    let url = url.as_str().to_string();
 
-    // Create a HEAD request using reqwest
-    let response = client.get(url.clone()).send().unwrap();
+    let sanitized_fname = INVALID_CHARS
+        .iter()
+        .fold(url, |fname, &c| fname.replace(c, ""))
+        .replace("//", "_")
+        .replace("/", "_");
 
-    response.content_length().unwrap_or_default()
+    format!("{app_name}#{version}#{sanitized_fname}")
+}
+
+pub async fn download(
+    app_name: &str,
+    version: &str,
+    url: &Url,
+    parent_dir: &PathBuf,
+) -> Result<DownloadStatus, ScoopieError> {
+    let file_name = extract_file_name(app_name, version, url);
+    let filepath = parent_dir.join(&file_name);
+
+    let client = reqwest::ClientBuilder::new()
+        .build()
+        .map_err(|_| ScoopieError::Download(DownloadError::UnableToGetClient))?;
+
+    let res = client.get(url.as_str()).send().await.unwrap();
+    let total_size = res.content_length().unwrap_or_default();
+
+    if filepath.exists() && fs::metadata(&filepath).unwrap().len() == total_size {
+        println!("Found in cache {app_name} (v{version})");
+        Ok(DownloadStatus::AlreadyInCache)
+    } else {
+        // Indicatif setup
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.blue} {msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .unwrap()
+        .progress_chars("=>-"));
+        pb.set_message(format!("Downloading {app_name} (v{version})"));
+
+        // download chunks
+        let mut file = BufWriter::new(File::create(&filepath).map_err(|_| {
+            ScoopieError::Download(DownloadError::UnableToCreateFile(file_name.to_owned()))
+        })?);
+        let mut downloaded = 0u64;
+        let mut stream = res.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            let chunk = item.map_err(|_| {
+                ScoopieError::Download(DownloadError::UnableToGetChunk(app_name.into()))
+            })?;
+
+            file.write_all(&chunk).map_err(|_| {
+                ScoopieError::Download(DownloadError::ChunkWrite(filepath.to_path_buf()))
+            })?;
+
+            let new = min(downloaded + (chunk.len() as u64), total_size);
+            downloaded = new;
+            pb.set_position(new);
+        }
+
+        file.flush().map_err(|_| {
+            ScoopieError::Download(DownloadError::FlushFile(filepath.to_path_buf()))
+        })?;
+
+        pb.finish_with_message(format!("Downloaded {app_name} (v{version})"));
+
+        Ok(DownloadStatus::Downloaded)
+    }
 }
