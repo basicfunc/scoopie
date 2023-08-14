@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
     io::Write,
@@ -119,11 +120,9 @@ impl Sync for Bucket {
     }
 }
 
-trait ReadFromRepo {
+trait ReadFromRepo: Sized {
     type Error;
-    fn read(path: &PathBuf) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
+    fn read(path: &PathBuf) -> Result<Self, Self::Error>;
 }
 
 impl ReadFromRepo for Bucket {
@@ -137,29 +136,26 @@ impl ReadFromRepo for Bucket {
 
         match (bucket_path.is_dir(), bucket_path.exists()) {
             (true, true) => {
-                let manifests: HashMap<String, Manifest> = fs::read_dir(bucket_path)
+                let manifests = fs::read_dir(bucket_path)
                     .map_err(|_| ScoopieError::Bucket(BucketError::BucketsNotFound))?
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().extension() == Some(OsStr::new("json")))
                     .par_bridge()
-                    .filter_map(|entry| {
-                        let file_path = entry.ok()?.path();
+                    .map(|entry| -> Result<(String, Manifest), ScoopieError> {
+                        let file_path = entry.path();
+                        let app_name = file_path
+                            .file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
 
-                        match file_path.extension().and_then(|e| e.to_str()) {
-                            Some("json") => {
-                                let app_name = file_path
-                                    .file_stem()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string();
-
-                                let buff = fs::read_to_string(file_path).ok()?;
-                                let manifest: Manifest = serde_json::from_str(&buff).ok()?;
-
-                                Some((app_name, manifest))
-                            }
-                            _ => None,
-                        }
+                        let buff = fs::read_to_string(&file_path)
+                            .map_err(|_| ScoopieError::FailedToReadFile(file_path.clone()))?;
+                        let manifest = serde_json::from_str::<Manifest>(&buff)
+                            .map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))?;
+                        Ok((app_name, manifest))
                     })
-                    .collect();
+                    .collect::<Result<HashMap<_, _>, _>>()?;
                 Ok(Bucket(manifests))
             }
             _ => Err(ScoopieError::Bucket(BucketError::NotFound)),

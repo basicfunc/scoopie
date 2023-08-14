@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::read_to_string;
 
 use super::{Bucket, Buckets, Manifest};
@@ -31,20 +32,26 @@ impl Query<&str> for Buckets {
             false => query.into(),
         };
 
-        let predicate = |bucket_name: String| -> Option<(String, Bucket)> {
-            let content = read_to_string(buckets_dir.join(&bucket_name)).unwrap();
-            let bucket: Bucket = from_str(&content).unwrap();
+        let predicate = |bucket_name: String| -> Result<(String, Bucket), ScoopieError> {
+            let bucket_path = buckets_dir.join(&bucket_name);
+            let content = read_to_string(&bucket_path)
+                .map_err(|_| ScoopieError::FailedToReadFile(bucket_path))?;
+
+            let bucket: Bucket = from_str(&content).map_err(|_| {
+                ScoopieError::Bucket(BucketError::FailedToReadBucket(bucket_name.clone()))
+            })?;
+
             let bucket: Bucket = bucket.query_fts(&query);
 
-            match !bucket.0.is_empty() {
-                true => Some((bucket_name, bucket)),
-                false => None,
-            }
+            Ok((bucket_name, bucket))
         };
 
-        Ok(Buckets(
-            buckets.into_par_iter().filter_map(predicate).collect(),
-        ))
+        let buckets = buckets
+            .into_par_iter()
+            .map(predicate)
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        Ok(Buckets(buckets))
     }
 
     fn query_app(query: &str) -> Result<Self, Self::Error> {

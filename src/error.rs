@@ -53,7 +53,7 @@ pub enum ScoopieError {
     #[error("Unable to open environment in current user registry")]
     UnableToOpenEnvRegistry,
     #[error("Your CPU architecture is not supported")]
-    UnknownArch,
+    UnsupportedArch,
     #[error("Unknown")]
     Unknown,
 }
@@ -98,8 +98,8 @@ pub enum BucketError {
     BucketsNotFound,
     #[error("Not Found")]
     NotFound,
-    #[error("Uanble to read mainfest")]
-    MainfestRead,
+    #[error("Failed to read bucket: {0}")]
+    FailedToReadBucket(String),
     #[error("Invalid JSON format")]
     InvalidManifest,
 }
@@ -121,5 +121,5 @@ pub enum ConfigError {
     #[error("Unexpected end of file")]
     UnexpectedEof,
     #[error("Invalid TOML")]
-    InvalidToml,
+    InvalidConfig,
 }

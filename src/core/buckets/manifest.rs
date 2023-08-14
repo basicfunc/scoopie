@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::vec;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
@@ -154,14 +152,18 @@ impl Attrs {
 }
 
 fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
-    const TO_BE_REMOVED_CHARS: [&str; 5] = [":", "#", "?", "&", "="];
+    const TO_BE_REMOVED_CHARS: &[&str] = &[":", "#", "?", "&", "="];
+    const TO_BE_REPLACED_CHARS: &[&str] = &["//", "/", "+"];
+
     let url = url.as_str().to_string();
 
     let sanitized_fname = TO_BE_REMOVED_CHARS
         .iter()
-        .fold(url, |fname, &c| fname.replace(c, ""))
-        .replace("//", "_")
-        .replace("/", "_");
+        .fold(url, |fname, &c| fname.replace(c, ""));
+
+    let sanitized_fname = TO_BE_REPLACED_CHARS
+        .iter()
+        .fold(sanitized_fname, |fname, &c| fname.replace(c, "_"));
 
     format!("{app_name}#{version}#{sanitized_fname}")
 }

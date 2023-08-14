@@ -58,7 +58,7 @@ impl Write<&Path> for Config {
     fn write(path: &Path) -> Result<(), Self::Error> {
         let default_config: Config = Config::default();
         let config = serde_json::to_string_pretty(&default_config)
-            .map_err(|_| ScoopieError::Config(crate::error::ConfigError::InvalidToml))?;
+            .map_err(|_| ScoopieError::Config(ConfigError::InvalidConfig))?;
 
         fs::write(path, config).map_err(|_| ScoopieError::Init(InitError::ConfigWrite))
     }
@@ -68,8 +68,6 @@ impl Write<&Path> for Config {
 pub struct Download {
     pub max_retries: u32,
     pub concurrent_downloads: usize,
-    pub hide_progress_bar: bool,
-    pub progress_bar_style: String,
 }
 
 impl Default for Download {
@@ -77,8 +75,6 @@ impl Default for Download {
         Download {
             max_retries: 5,
             concurrent_downloads: 4,
-            hide_progress_bar: false,
-            progress_bar_style: "PIP".to_string(),
         }
     }
 }
@@ -100,7 +96,7 @@ impl TryFrom<PathBuf> for Config {
             .map_err(|_| ScoopieError::Config(ConfigError::InvalidData))?;
 
         serde_json::from_str::<Config>(&content)
-            .map_err(|_| ScoopieError::Config(ConfigError::InvalidToml))
+            .map_err(|_| ScoopieError::Config(ConfigError::InvalidConfig))
     }
 }
 
@@ -215,7 +211,7 @@ impl Stats for Config {
             "x86" => Ok(Arch::Bit32),
             "x86_64" => Ok(Arch::Bit64),
             "aarch64" => Ok(Arch::Arm64),
-            _ => Err(ScoopieError::UnknownArch),
+            _ => Err(ScoopieError::UnsupportedArch),
         }
     }
 }
