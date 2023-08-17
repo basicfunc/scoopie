@@ -45,7 +45,7 @@ tempfile = "3.6.0"
 # For error handling
 thiserror = "1.0.41"
 
-# Used to download packages from remote
+# To download packages from remote
 reqwest = { version = "0.11.18", features = ["stream", "blocking"] }
 
 # To shows progress bars
@@ -53,3 +53,7 @@ indicatif = "0.17.6"
 
 # To manipulate registries for current user
 winreg = "0.50.0"
+
+# To decompress archives
+sevenz-rust={ version = "0.4.3", features=["bzip2", "zstd"]}
+

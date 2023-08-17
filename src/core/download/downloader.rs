@@ -20,9 +20,9 @@ const PROGRESS_CHARS: &'static str = "=>-";
 
 #[derive(Debug)]
 pub enum DownloadStatus {
-    Downloaded,
-    DownloadedAndVerified,
-    AlreadyInCache,
+    Downloaded(String),
+    DownloadedAndVerified(String),
+    AlreadyInCache(String),
 }
 
 pub struct Downloader;
@@ -119,7 +119,7 @@ fn download(
             if let Some(hash) = verify {
                 if hash.verify(&file_path)? {
                     pb.finish_with_message(format!("Downloaded and verified {app_name}"));
-                    Ok(DownloadStatus::DownloadedAndVerified)
+                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
                 } else {
                     Err(ScoopieError::Download(DownloadError::WrongDigest(
                         app_name.into(),
@@ -127,7 +127,7 @@ fn download(
                 }
             } else {
                 pb.finish_with_message(format!("Downloaded {app_name}"));
-                Ok(DownloadStatus::Downloaded)
+                Ok(DownloadStatus::Downloaded(file_name.into()))
             }
         };
 
@@ -137,7 +137,7 @@ fn download(
                 .len()
                 .eq(&total_size)
             {
-                true => Ok(DownloadStatus::AlreadyInCache),
+                true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
                 false => {
                     file_path.rm()?;
                     downloader().await

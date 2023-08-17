@@ -1,4 +1,4 @@
-use crate::core::{buckets::*, download::*};
+use crate::core::{buckets::*, download::*, install::install};
 
 use argh::FromArgs;
 
@@ -41,7 +41,10 @@ impl ExecuteCommand for InstallCommand {
             };
             Ok(())
         } else {
-            todo!()
+            let app = self.app.as_ref().unwrap();
+            let _ = install(app);
+
+            Ok(())
         }
     }
 }
