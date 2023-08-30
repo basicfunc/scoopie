@@ -95,7 +95,7 @@ fn download(
                 Ok(0) => break,
 
                 Ok(bytes) => {
-                    file.write_all(&chunk).map_err(|_| {
+                    file.write_all(&chunk[..bytes]).map_err(|_| {
                         ScoopieError::Download(DownloadError::ChunkWrite(file_path.to_path_buf()))
                     })?;
                     downloaded += bytes;
