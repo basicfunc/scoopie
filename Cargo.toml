@@ -35,9 +35,6 @@ serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.99"
 url = { version = "2.4.0", features = ["serde"] }
 
-# To store files temporarily
-tempfile = "3.6.0"
-
 # For error handling
 thiserror = "1.0.41"
 
