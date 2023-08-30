@@ -30,10 +30,6 @@ git2 = "0.17.2"
 # To query through buckets
 regex-lite = "0.1.0"
 
-# For async programming
-tokio = { version = "1.29.1", features = ["rt"] }
-futures-util = "0.3.28"
-
 # For de/serialization
 serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.99"
@@ -46,14 +42,10 @@ tempfile = "3.6.0"
 thiserror = "1.0.41"
 
 # To download packages from remote
-reqwest = { version = "0.11.18", features = ["stream", "blocking"] }
+ureq = "2.7.1"
 
 # To shows progress bars
-indicatif = "0.17.6"
+spinoff = "0.8.0"
 
 # To manipulate registries for current user
 winreg = "0.50.0"
-
-# To decompress archives
-sevenz-rust={ version = "0.4.3", features=["bzip2", "zstd"]}
-
