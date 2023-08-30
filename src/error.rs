@@ -54,6 +54,8 @@ pub enum ScoopieError {
     UnableToOpenEnvRegistry,
     #[error("Your CPU architecture is not supported")]
     UnsupportedArch,
+    #[error("Unable to get environment variable: {0}")]
+    UnableToGetEnvVar(String),
     #[error("Unknown")]
     Unknown,
 }
@@ -72,10 +74,6 @@ pub enum DownloadError {
     UnableToGetChunk(String),
     #[error("Unable to create file while downloading app: {0}")]
     UnableToCreateFile(String),
-    #[error("Unable to get HTTP client, possible reasons could be system configuration or network error")]
-    UnableToGetClient,
-    #[error("Failed to create runtime for downloader")]
-    FailedToCreateRunTime,
     #[error("Found wrong digest for {0}")]
     WrongDigest(String),
 }

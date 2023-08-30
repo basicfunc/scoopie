@@ -1,46 +1,14 @@
+mod env_var;
+mod tmpdir;
+
 use crate::error::ScoopieError;
 use std::{
     fs::{remove_dir_all, remove_file, DirBuilder},
     path::PathBuf,
 };
 
-use winreg::{enums::*, RegKey};
-
-pub struct EnvVar;
-
-impl EnvVar {
-    pub fn home_dir() -> Result<PathBuf, ScoopieError> {
-        let curr_user = RegKey::predef(HKEY_CURRENT_USER);
-        let vars = curr_user
-            .open_subkey_with_flags("Volatile Environment", KEY_READ)
-            .map_err(|_| ScoopieError::UnableToOpenEnvRegistry)?;
-
-        let home_dir: String = vars
-            .get_value("USERPROFILE")
-            .map_err(|_| ScoopieError::UserDirUnavailable)?;
-
-        Ok(PathBuf::from(home_dir))
-    }
-
-    pub fn create_or_update(key: &str, value: &str) -> Result<(), ScoopieError> {
-        let curr_user = RegKey::predef(HKEY_CURRENT_USER);
-
-        let env = curr_user
-            .open_subkey_with_flags("Environment", KEY_ALL_ACCESS)
-            .map_err(|_| ScoopieError::UnableToOpenEnvRegistry)?;
-
-        env.set_value(key, &value).map_err(|_| ScoopieError::EnvSet)
-    }
-
-    pub fn remove(key: &str) -> Result<(), ScoopieError> {
-        let curr_user = RegKey::predef(HKEY_CURRENT_USER);
-        let env = curr_user
-            .open_subkey_with_flags("Environment", KEY_ALL_ACCESS)
-            .map_err(|_| ScoopieError::UnableToOpenEnvRegistry)?;
-
-        env.delete_value(key).map_err(|_| ScoopieError::EnvRemove)
-    }
-}
+pub use env_var::EnvVar;
+pub use tmpdir::TempDir;
 
 pub trait Remove {
     type Error;

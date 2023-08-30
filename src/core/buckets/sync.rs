@@ -9,6 +9,7 @@ use std::{
 
 use crate::core::config::*;
 use crate::error::*;
+use crate::utils::TempDir;
 
 use super::manifest::Manifest;
 use super::metadata::MetaData;
@@ -17,7 +18,6 @@ use super::{Bucket, Buckets};
 use git2::build::RepoBuilder;
 use rayon::prelude::*;
 use serde_json::json;
-use tempfile::tempdir;
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum SyncStatus {
@@ -76,9 +76,8 @@ impl Sync for Bucket {
     type Error = ScoopieError;
 
     fn sync(name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error> {
-        let temp_dir = tempdir()
-            .map_err(|_| ScoopieError::Sync(SyncError::UnableToMkTmpDir))?
-            .into_path();
+        let temp_dir_builder = TempDir::build()?;
+        let temp_dir = temp_dir_builder.path();
 
         let repo = RepoBuilder::new()
             .clone(url, &temp_dir)
