@@ -1,6 +1,7 @@
 use std::format;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
+use std::iter::zip;
 
 use url::Url;
 
@@ -48,13 +49,15 @@ impl Downloader {
                 }
             };
 
-        let entries = manifest.download_entry(&app_name);
+        let version = &manifest.version;
+        let urls = manifest.url();
+        let hashes = manifest.hash();
 
-        entries
-            .iter()
-            .map(|(url, hash, file)| {
-                let hash = if verify { Some(hash) } else { None };
-                download(&app_name, url, file, hash)
+        zip(urls, hashes)
+            .map(|(url, hash)| {
+                let file = extract_file_name(app_name, version, &url);
+                let hash = if verify { Some(&hash) } else { None };
+                download(&app_name, url.as_str(), &file, hash)
             })
             .collect::<Result<Vec<_>, _>>()
     }
@@ -62,13 +65,13 @@ impl Downloader {
 
 fn download(
     app_name: &str,
-    url: &Url,
+    url: &str,
     file_name: &str,
     verify: Option<&Hash>,
 ) -> Result<DownloadStatus, ScoopieError> {
     let file_path = Config::cache_dir()?.join(file_name);
 
-    let res = ureq::get(url.as_str()).call().unwrap();
+    let res = ureq::get(url).call().unwrap();
 
     let total_size = match res.header("content-length") {
         Some(size) => size.parse::<usize>().unwrap_or(0),
@@ -118,7 +121,7 @@ fn download(
         match verify {
             Some(hash) => match hash.verify(&file_path)? {
                 true => {
-                    sp.success("Downloaded and verified {app_name}");
+                    sp.success(&format!("Downloaded and verified {app_name}"));
                     Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
                 }
                 false => Err(ScoopieError::Download(DownloadError::WrongDigest(
@@ -126,7 +129,7 @@ fn download(
                 ))),
             },
             None => {
-                sp.success("Downloaded {app_name}");
+                sp.success(&format!("Downloaded {app_name}"));
                 Ok(DownloadStatus::Downloaded(file_name.into()))
             }
         }
@@ -148,4 +151,21 @@ fn download(
         },
         false => downloader(),
     }
+}
+
+fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
+    const TO_BE_REMOVED_CHARS: &[&str] = &[":", "#", "?", "&", "="];
+    const TO_BE_REPLACED_CHARS: &[&str] = &["//", "/", "+"];
+
+    let url = url.as_str().to_string();
+
+    let sanitized_fname = TO_BE_REMOVED_CHARS
+        .iter()
+        .fold(url, |fname, &c| fname.replace(c, ""));
+
+    let sanitized_fname = TO_BE_REPLACED_CHARS
+        .iter()
+        .fold(sanitized_fname, |fname, &c| fname.replace(c, "_"));
+
+    format!("{app_name}#{version}#{sanitized_fname}")
 }

@@ -86,18 +86,6 @@ impl Manifest {
         }
     }
 
-    pub fn download_entry(&self, app_name: &str) -> Vec<(Url, Hash, String)> {
-        use std::iter::zip;
-
-        zip(self.url(), self.hash())
-            .map(|(url, hash)| {
-                let file_name = extract_file_name(app_name, &self.version, &url);
-
-                (url, hash, file_name)
-            })
-            .collect()
-    }
-
     pub fn hash(&self) -> Vec<Hash> {
         match &self.architecture {
             Some(arch) => arch.get().hash(),
@@ -149,21 +137,4 @@ impl Attrs {
     fn hash(self) -> Vec<Hash> {
         self.hash.unwrap_or_default()
     }
-}
-
-fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
-    const TO_BE_REMOVED_CHARS: &[&str] = &[":", "#", "?", "&", "="];
-    const TO_BE_REPLACED_CHARS: &[&str] = &["//", "/", "+"];
-
-    let url = url.as_str().to_string();
-
-    let sanitized_fname = TO_BE_REMOVED_CHARS
-        .iter()
-        .fold(url, |fname, &c| fname.replace(c, ""));
-
-    let sanitized_fname = TO_BE_REPLACED_CHARS
-        .iter()
-        .fold(sanitized_fname, |fname, &c| fname.replace(c, "_"));
-
-    format!("{app_name}#{version}#{sanitized_fname}")
 }
