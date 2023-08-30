@@ -1,11 +1,10 @@
+use std::format;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::{cmp::min, format};
 
-use futures_util::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
-use tokio::runtime::Runtime;
 use url::Url;
+
+use spinoff::{spinners, Color, Spinner};
 
 use super::Hash;
 
@@ -14,9 +13,6 @@ use {
     crate::error::*,
     crate::utils::*,
 };
-
-const TEMPLATE: &'static str  = "{spinner:.blue} {msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})";
-const PROGRESS_CHARS: &'static str = "=>-";
 
 #[derive(Debug)]
 pub enum DownloadStatus {
@@ -70,80 +66,86 @@ fn download(
     file_name: &str,
     verify: Option<&Hash>,
 ) -> Result<DownloadStatus, ScoopieError> {
-    let rt =
-        Runtime::new().map_err(|_| ScoopieError::Download(DownloadError::FailedToCreateRunTime))?;
+    let file_path = Config::cache_dir()?.join(file_name);
 
-    rt.block_on(async {
-        let file_path = Config::cache_dir()?.join(file_name);
+    let res = ureq::get(url.as_str()).call().unwrap();
 
-        let client = reqwest::ClientBuilder::new()
-            .build()
-            .map_err(|_| ScoopieError::Download(DownloadError::UnableToGetClient))?;
+    let total_size = match res.header("content-length") {
+        Some(size) => size.parse::<usize>().unwrap_or(0),
+        None => 0,
+    };
 
-        let res = client.get(url.as_str()).send().await.unwrap();
-        let total_size = res.content_length().unwrap_or_default();
+    let downloader = || -> Result<DownloadStatus, ScoopieError> {
+        let mut file = BufWriter::new(File::create(&file_path).map_err(|_| {
+            ScoopieError::Download(DownloadError::UnableToCreateFile(file_name.to_owned()))
+        })?);
 
-        let downloader = || async {
-            let style = ProgressStyle::with_template(TEMPLATE)
-                .unwrap()
-                .progress_chars(PROGRESS_CHARS);
+        let mut downloaded = 0;
+        let mut stream = res.into_reader();
+        let mut chunk = [0; 4096];
 
-            let pb = ProgressBar::new(total_size);
-            pb.set_style(style);
-            pb.set_message(format!("Downloading {app_name}"));
+        let mut sp = Spinner::new(
+            spinners::BouncingBall,
+            format!("Downloading {app_name}"),
+            Color::Blue,
+        );
 
-            let mut file = BufWriter::new(File::create(&file_path).map_err(|_| {
-                ScoopieError::Download(DownloadError::UnableToCreateFile(file_name.to_owned()))
-            })?);
-            let mut downloaded = 0u64;
-            let mut stream = res.bytes_stream();
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
 
-            while let Some(item) = stream.next().await {
-                let chunk = item.map_err(|_| {
-                    ScoopieError::Download(DownloadError::UnableToGetChunk(app_name.into()))
-                })?;
+                Ok(bytes) => {
+                    file.write_all(&chunk).map_err(|_| {
+                        ScoopieError::Download(DownloadError::ChunkWrite(file_path.to_path_buf()))
+                    })?;
+                    downloaded += bytes;
+                    let percentage = (downloaded as f64 / total_size as f64) * 100.0;
+                    sp.update_text(format!("Downloading {app_name}: {:.2}%", percentage));
+                }
 
-                file.write_all(&chunk).map_err(|_| {
-                    ScoopieError::Download(DownloadError::ChunkWrite(file_path.to_path_buf()))
-                })?;
-
-                let new = min(downloaded + (chunk.len() as u64), total_size);
-                downloaded = new;
-                pb.set_position(new);
-            }
-
-            file.flush().map_err(|_| {
-                ScoopieError::Download(DownloadError::FlushFile(file_path.to_path_buf()))
-            })?;
-
-            if let Some(hash) = verify {
-                if hash.verify(&file_path)? {
-                    pb.finish_with_message(format!("Downloaded and verified {app_name}"));
-                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
-                } else {
-                    Err(ScoopieError::Download(DownloadError::WrongDigest(
+                Err(_) => {
+                    return Err(ScoopieError::Download(DownloadError::UnableToGetChunk(
                         app_name.into(),
                     )))
                 }
-            } else {
-                pb.finish_with_message(format!("Downloaded {app_name}"));
+            }
+        }
+
+        file.flush().map_err(|_| {
+            ScoopieError::Download(DownloadError::FlushFile(file_path.to_path_buf()))
+        })?;
+
+        match verify {
+            Some(hash) => match hash.verify(&file_path)? {
+                true => {
+                    sp.success("Downloaded and verified {app_name}");
+                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
+                }
+                false => Err(ScoopieError::Download(DownloadError::WrongDigest(
+                    app_name.into(),
+                ))),
+            },
+            None => {
+                sp.success("Downloaded {app_name}");
                 Ok(DownloadStatus::Downloaded(file_name.into()))
             }
-        };
-
-        match file_path.exists() {
-            true => match fs::metadata(&file_path)
-                .map_err(|_| ScoopieError::FailedToGetMetadata(file_path.to_path_buf()))?
-                .len()
-                .eq(&total_size)
-            {
-                true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
-                false => {
-                    file_path.rm()?;
-                    downloader().await
-                }
-            },
-            false => downloader().await,
         }
-    })
+    };
+
+    match file_path.exists() {
+        true => match fs::metadata(&file_path)
+            .or(Err(ScoopieError::FailedToGetMetadata(
+                file_path.to_path_buf(),
+            )))?
+            .len() as usize
+            == total_size
+        {
+            true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
+            false => {
+                file_path.rm()?;
+                downloader()
+            }
+        },
+        false => downloader(),
+    }
 }

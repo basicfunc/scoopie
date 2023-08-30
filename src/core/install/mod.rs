@@ -1,6 +1,7 @@
-mod installer;
+mod extractor;
 
-use std::{ffi::OsStr, path::PathBuf};
+use extractor::FileKind;
+use std::path::PathBuf;
 
 use crate::core::{
     buckets::{Buckets, Query},
@@ -37,27 +38,34 @@ pub fn install(app: &str) {
         .map(|s| cache_dir.join(s))
         .collect::<Vec<_>>();
 
-    let version = &manifest.version;
+    srcs.iter().for_each(|s| {
+        let ar_type = FileKind::infer(s);
 
-    let app_dir = Config::app_dir().unwrap();
-    let app_dir = app_dir.join(app_name);
-    let app_dir = app_dir.join(version);
+        println!("{:?}", ar_type);
+    })
 
-    if !app_dir.exists() {
-        PathBuf::create(app_dir.clone()).unwrap();
-        use sevenz_rust::decompress_file;
-        for src in srcs {
-            if src
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string()
-                == "7z"
-            {
-                decompress_file(src, &app_dir).unwrap();
-            }
-        }
-    }
+    // let version = &manifest.version;
 
-    println!("{app_name}\n{manifest:#?}\n{file_name:#?} at {app_dir:?}");
+    // let app_dir = Config::app_dir().unwrap();
+    // let app_dir = app_dir.join(app_name);
+    // let app_dir = app_dir.join(version);
+
+    // if !app_dir.exists() {
+    //     PathBuf::create(app_dir.clone()).unwrap();
+    //     use sevenz_rust::decompress_file;
+    //     for src in srcs {
+    //         if src
+    //             .extension()
+    //             .unwrap_or_default()
+    //             .to_string_lossy()
+    //             .to_string()
+    //             == "7z"
+    //         {
+    //             println!("decompressingn {:?}", src);
+    //             decompress_file(src, &app_dir).unwrap();
+    //         }
+    //     }
+    // }
+
+    // println!("{app_name}\n{manifest:#?}\n{file_name:#?} at {app_dir:?}");
 }
