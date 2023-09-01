@@ -9,7 +9,7 @@ use std::{
 
 use crate::core::config::*;
 use crate::error::*;
-use crate::utils::TempDir;
+use crate::utils::*;
 
 use super::manifest::Manifest;
 use super::metadata::MetaData;
@@ -18,6 +18,8 @@ use super::{Bucket, Buckets};
 use git2::build::RepoBuilder;
 use rayon::prelude::*;
 use serde_json::json;
+
+use spinoff::{spinners, Color, Spinner};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum SyncStatus {
@@ -79,6 +81,12 @@ impl Sync for Bucket {
         let temp_dir_builder = TempDir::build()?;
         let temp_dir = temp_dir_builder.path();
 
+        let mut sp = Spinner::new(
+            spinners::Dots,
+            format!("Fetching bucket {name}"),
+            Color::Blue,
+        );
+
         let repo = RepoBuilder::new()
             .clone(url, &temp_dir)
             .map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
@@ -96,21 +104,31 @@ impl Sync for Bucket {
         let bucket_dir = Config::buckets_dir()?;
         let bucket_path = bucket_dir.join(name);
 
+        sp.update_text(format!("Reading metadata for bucket {name}"));
         let mut metadata = MetaData::read()?;
 
         let st = match (
             bucket_path.exists(),
             metadata.get(name).commit_id == commit_id,
         ) {
-            (true, true) => SyncStatus::UpToDate(name.into()),
+            (true, true) => {
+                sp.success(&format!("Bucket: {name} is already synced to remote."));
+                SyncStatus::UpToDate(name.into())
+            }
             (true, false) => {
+                sp.update_text(format!("Reading manifests from bucket {name}"));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
+                sp.update_text(format!("Writing metadata for bucket {name}"));
                 metadata.write(name, url, &commit_id)?;
+                sp.success(&format!("Bucket: {name} synced to remote."));
                 SyncStatus::Synced(name.into())
             }
             (false, _) => {
+                sp.update_text(format!("Reading manifests from bucket {name}"));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
+                sp.update_text(format!("Writing metadata for bucket {name}"));
                 metadata.write(name, url, &commit_id)?;
+                sp.success(&format!("Bucket: {name} has been created."));
                 SyncStatus::Created(name.into())
             }
         };
@@ -127,10 +145,7 @@ trait ReadFromRepo: Sized {
 impl ReadFromRepo for Bucket {
     type Error = ScoopieError;
 
-    fn read(path: &PathBuf) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
+    fn read(path: &PathBuf) -> Result<Self, Self::Error> {
         let bucket_path = path.join("bucket");
 
         match (bucket_path.is_dir(), bucket_path.exists()) {
