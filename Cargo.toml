@@ -24,8 +24,8 @@ hex = "0.4.3"
 # For parllel computing
 rayon = "1.7.0"
 
-# To clone buckets from remote
-git2 = "0.17.2"
+# For cloning git repositories
+git2 = "0.18.0"
 
 # To query through buckets
 regex-lite = "0.1.0"
