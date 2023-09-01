@@ -16,7 +16,20 @@ impl TempDir {
     pub fn build() -> Result<Self, ScoopieError> {
         let registered_tmp_dir =
             env::var("TMP").map_err(|_| ScoopieError::UnableToGetEnvVar(String::from("TMP")))?;
-        let tmp_dir = PathBuf::from(registered_tmp_dir).join(Self::generate_dir_name());
+
+        let dir_name = (|| {
+            let seed = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+                .to_le_bytes();
+
+            let suffix = &hex::encode(Md5::digest(seed))[..6];
+
+            format!("tmp_scoopie_{suffix}")
+        })();
+
+        let tmp_dir = PathBuf::from(registered_tmp_dir).join(dir_name);
 
         let _ = DirBuilder::new()
             .recursive(true)
@@ -28,18 +41,6 @@ impl TempDir {
 
     pub fn path(&self) -> PathBuf {
         self.0.to_path_buf()
-    }
-
-    fn generate_dir_name() -> PathBuf {
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-            .to_le_bytes();
-
-        let suffix = &hex::encode(Md5::digest(seed))[..6];
-
-        PathBuf::from(format!("tmp_scoopie_{suffix}"))
     }
 }
 
