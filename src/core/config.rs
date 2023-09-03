@@ -9,11 +9,9 @@ use crate::utils::EnvVar;
 
 use serde::{Deserialize, Serialize};
 
-pub trait Reader {
+pub trait Reader: Sized {
     type Error;
-    fn read() -> Result<Self, Self::Error>
-    where
-        Self: Sized;
+    fn read() -> Result<Self, Self::Error>;
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -50,7 +48,7 @@ impl Default for Config {
 
 pub trait Write<T> {
     type Error;
-    fn write(path: T) -> Result<(), ScoopieError>;
+    fn write(path: T) -> Result<(), Self::Error>;
 }
 
 impl Write<&Path> for Config {
@@ -58,9 +56,9 @@ impl Write<&Path> for Config {
     fn write(path: &Path) -> Result<(), Self::Error> {
         let default_config: Config = Config::default();
         let config = serde_json::to_string_pretty(&default_config)
-            .map_err(|_| ScoopieError::Config(ConfigError::InvalidConfig))?;
+            .map_err(|_| ScoopieError::InvalidConfig)?;
 
-        fs::write(path, config).map_err(|_| ScoopieError::Init(InitError::ConfigWrite))
+        fs::write(path, config).map_err(|_| ScoopieError::ConfigWriteWhileInit)
     }
 }
 
@@ -84,19 +82,17 @@ impl TryFrom<PathBuf> for Config {
 
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
         let buffer = std::fs::read(&value).map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => ScoopieError::Config(ConfigError::ConfigNotFound),
+            std::io::ErrorKind::NotFound => ScoopieError::ConfigNotFound,
             std::io::ErrorKind::PermissionDenied => ScoopieError::PermissionDenied,
-            std::io::ErrorKind::InvalidData => ScoopieError::Config(ConfigError::InvalidData),
-            std::io::ErrorKind::Interrupted => ScoopieError::Config(ConfigError::Interrupted),
-            std::io::ErrorKind::UnexpectedEof => ScoopieError::Config(ConfigError::UnexpectedEof),
+            std::io::ErrorKind::InvalidData => ScoopieError::ConfigInvalidData,
+            std::io::ErrorKind::Interrupted => ScoopieError::InterruptedConfig,
+            std::io::ErrorKind::UnexpectedEof => ScoopieError::UnexpectedEofInConfig,
             _ => ScoopieError::Unknown,
         })?;
 
-        let content = String::from_utf8(buffer)
-            .map_err(|_| ScoopieError::Config(ConfigError::InvalidData))?;
+        let content = String::from_utf8(buffer).map_err(|_| ScoopieError::ConfigInvalidData)?;
 
-        serde_json::from_str::<Config>(&content)
-            .map_err(|_| ScoopieError::Config(ConfigError::InvalidConfig))
+        serde_json::from_str::<Config>(&content).map_err(|_| ScoopieError::InvalidConfig)
     }
 }
 
@@ -109,7 +105,7 @@ impl Reader for Config {
 
         match scoopie_config.exists() {
             true => Config::try_from(scoopie_config),
-            false => Err(ScoopieError::Config(ConfigError::ConfigNotFound)),
+            false => Err(ScoopieError::ConfigNotFound),
         }
     }
 }
@@ -129,16 +125,20 @@ impl Config {
 }
 
 pub trait DefaultDirs {
-    fn home_dir() -> Result<PathBuf, ScoopieError>;
-    fn app_dir() -> Result<PathBuf, ScoopieError>;
-    fn cache_dir() -> Result<PathBuf, ScoopieError>;
-    fn persist_dir() -> Result<PathBuf, ScoopieError>;
-    fn buckets_dir() -> Result<PathBuf, ScoopieError>;
-    fn shims_dir() -> Result<PathBuf, ScoopieError>;
+    type Error;
+
+    fn home_dir() -> Result<PathBuf, Self::Error>;
+    fn app_dir() -> Result<PathBuf, Self::Error>;
+    fn cache_dir() -> Result<PathBuf, Self::Error>;
+    fn persist_dir() -> Result<PathBuf, Self::Error>;
+    fn buckets_dir() -> Result<PathBuf, Self::Error>;
+    fn shims_dir() -> Result<PathBuf, Self::Error>;
 }
 
 impl DefaultDirs for Config {
-    fn home_dir() -> Result<PathBuf, ScoopieError> {
+    type Error = ScoopieError;
+
+    fn home_dir() -> Result<PathBuf, Self::Error> {
         let scoopie_home = env::var("SCOOPIE_HOME").map_err(|_| ScoopieError::EnvResolve)?;
         let scoopie_home = PathBuf::from(scoopie_home);
 
@@ -148,7 +148,7 @@ impl DefaultDirs for Config {
         }
     }
 
-    fn buckets_dir() -> Result<PathBuf, ScoopieError> {
+    fn buckets_dir() -> Result<PathBuf, Self::Error> {
         let buckets_dir = Self::home_dir()?.join("buckets");
 
         match buckets_dir.exists() {
@@ -157,7 +157,7 @@ impl DefaultDirs for Config {
         }
     }
 
-    fn cache_dir() -> Result<PathBuf, ScoopieError> {
+    fn cache_dir() -> Result<PathBuf, Self::Error> {
         let cache_dir = Self::home_dir()?.join("cache");
 
         match cache_dir.exists() {
@@ -166,7 +166,7 @@ impl DefaultDirs for Config {
         }
     }
 
-    fn app_dir() -> Result<PathBuf, ScoopieError> {
+    fn app_dir() -> Result<PathBuf, Self::Error> {
         let apps_dir = Self::home_dir()?.join("apps");
 
         match apps_dir.exists() {
@@ -175,7 +175,7 @@ impl DefaultDirs for Config {
         }
     }
 
-    fn persist_dir() -> Result<PathBuf, ScoopieError> {
+    fn persist_dir() -> Result<PathBuf, Self::Error> {
         let persist_dir = Self::home_dir()?.join("persists");
 
         match persist_dir.exists() {
@@ -184,7 +184,7 @@ impl DefaultDirs for Config {
         }
     }
 
-    fn shims_dir() -> Result<PathBuf, ScoopieError> {
+    fn shims_dir() -> Result<PathBuf, Self::Error> {
         let shims_dir = Self::home_dir()?.join("shims");
 
         match shims_dir.exists() {

@@ -83,21 +83,19 @@ impl Sync for Bucket {
 
         let mut sp = Spinner::new(
             spinners::Dots,
-            format!("Fetching bucket {name}"),
+            format!("Fetching bucket {name}..."),
             Color::Blue,
         );
 
         let repo = RepoBuilder::new()
             .clone(url, &temp_dir)
-            .map_err(|_| ScoopieError::Sync(SyncError::UnableToFetchRepo))?;
+            .map_err(|_| ScoopieError::SyncUnableToFetchRepo)?;
 
-        let head = repo
-            .head()
-            .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetHead))?;
+        let head = repo.head().map_err(|_| ScoopieError::SyncUnableToGetHead)?;
 
         let commit_id = head
             .peel_to_commit()
-            .map_err(|_| ScoopieError::Sync(SyncError::UnableToGetCommit))?
+            .map_err(|_| ScoopieError::SyncUnableToGetCommit)?
             .id()
             .to_string();
 
@@ -111,26 +109,28 @@ impl Sync for Bucket {
             bucket_path.exists(),
             metadata.get(name).commit_id == commit_id,
         ) {
-            (true, true) => {
-                sp.success(&format!("Bucket: {name} is already synced to remote."));
-                SyncStatus::UpToDate(name.into())
-            }
+            (true, true) => SyncStatus::UpToDate(name.into()),
             (true, false) => {
-                sp.update_text(format!("Reading manifests from bucket {name}"));
+                sp.update_text(format!("Reading manifests from bucket {name}..."));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
-                sp.update_text(format!("Writing metadata for bucket {name}"));
                 metadata.write(name, url, &commit_id)?;
-                sp.success(&format!("Bucket: {name} synced to remote."));
                 SyncStatus::Synced(name.into())
             }
+
             (false, _) => {
                 sp.update_text(format!("Reading manifests from bucket {name}"));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
-                sp.update_text(format!("Writing metadata for bucket {name}"));
                 metadata.write(name, url, &commit_id)?;
-                sp.success(&format!("Bucket: {name} has been created."));
                 SyncStatus::Created(name.into())
             }
+        };
+
+        match st {
+            SyncStatus::UpToDate(_) => {
+                sp.success(&format!("Bucket: {name} is already synced to remote"))
+            }
+            SyncStatus::Synced(_) => sp.success(&format!("Bucket: {name} synced to remote")),
+            SyncStatus::Created(_) => sp.success(&format!("Bucket: {name} has been created")),
         };
 
         Ok(st)
@@ -151,7 +151,7 @@ impl ReadFromRepo for Bucket {
         match (bucket_path.is_dir(), bucket_path.exists()) {
             (true, true) => {
                 let manifests = fs::read_dir(bucket_path)
-                    .map_err(|_| ScoopieError::Bucket(BucketError::BucketsNotFound))?
+                    .map_err(|_| ScoopieError::BucketsNotFound)?
                     .filter_map(Result::ok)
                     .filter(|entry| entry.path().extension() == Some(OsStr::new("json")))
                     .par_bridge()
@@ -163,16 +163,13 @@ impl ReadFromRepo for Bucket {
                             .to_string_lossy()
                             .to_string();
 
-                        let buff = fs::read_to_string(&file_path)
-                            .map_err(|_| ScoopieError::FailedToReadFile(file_path.clone()))?;
-                        let manifest = serde_json::from_str::<Manifest>(&buff)
-                            .map_err(|_| ScoopieError::Bucket(BucketError::InvalidManifest))?;
+                        let manifest = Manifest::try_from(file_path)?;
                         Ok((app_name, manifest))
                     })
                     .collect::<Result<HashMap<_, _>, _>>()?;
                 Ok(Bucket(manifests))
             }
-            _ => Err(ScoopieError::Bucket(BucketError::NotFound)),
+            _ => Err(ScoopieError::BucketsNotFound),
         }
     }
 }

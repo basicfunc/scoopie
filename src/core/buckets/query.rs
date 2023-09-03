@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::read_to_string;
 
-use super::{Bucket, Buckets, Manifest};
+use super::{Bucket, Buckets};
 
 use crate::core::config::*;
 use crate::error::*;
@@ -37,11 +37,10 @@ impl Query<&str> for Buckets {
             let content = read_to_string(&bucket_path)
                 .map_err(|_| ScoopieError::FailedToReadFile(bucket_path))?;
 
-            let bucket: Bucket = from_str(&content).map_err(|_| {
-                ScoopieError::Bucket(BucketError::FailedToReadBucket(bucket_name.clone()))
-            })?;
+            let bucket: Bucket = from_str(&content)
+                .map_err(|_| ScoopieError::FailedToReadBucket(bucket_name.to_string()))?;
 
-            let bucket: Bucket = bucket.query_fts(&query);
+            let bucket: Bucket = bucket.query_fts(&query)?;
 
             Ok((bucket_name, bucket))
         };
@@ -58,41 +57,57 @@ impl Query<&str> for Buckets {
         let buckets_dir = Config::buckets_dir()?;
         let buckets = Config::read()?.list_buckets();
 
-        let predicate = |bucket_name: String| -> Option<(String, Bucket)> {
-            let content = read_to_string(buckets_dir.join(&bucket_name)).unwrap();
-            let bucket: Bucket = from_str(&content).unwrap();
-            let bucket: Bucket = bucket.query_app(&query);
+        let predicate = |bucket_name: String| -> Result<(String, Bucket), ScoopieError> {
+            let bucket_path = buckets_dir.join(&bucket_name);
 
-            match !bucket.0.is_empty() {
-                true => Some((bucket_name, bucket)),
-                false => None,
-            }
+            let content = read_to_string(&bucket_path)
+                .map_err(|_| ScoopieError::FailedToReadFile(bucket_path))?;
+
+            let bucket: Bucket = from_str(&content)
+                .map_err(|_| ScoopieError::FailedToReadBucket(bucket_name.to_string()))?;
+
+            let bucket: Bucket = bucket.query_app(&query)?;
+
+            Ok((bucket_name, bucket))
         };
 
-        Ok(Buckets(
-            buckets.into_par_iter().filter_map(predicate).collect(),
-        ))
+        let bucket = buckets
+            .into_par_iter()
+            .map(predicate)
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        Ok(Buckets(bucket))
     }
 }
 
 trait QueryBucket<T>: Sized {
-    fn query_fts(self, q: &str) -> Self;
-    fn query_app(self, q: &str) -> Self;
+    type Error;
+    fn query_fts(self, pat: &str) -> Result<Self, Self::Error>;
+    fn query_app(self, app: &str) -> Result<Self, Self::Error>;
 }
 
 impl QueryBucket<&str> for Bucket {
-    fn query_fts(self, q: &str) -> Self {
-        let predicate = |(app_name, manifest): &(String, Manifest)| -> bool {
-            let re = Regex::new(q).unwrap();
-            re.is_match(&app_name) || re.is_match(&manifest.description)
-        };
+    type Error = ScoopieError;
 
-        Bucket(self.0.into_par_iter().filter(predicate).collect())
+    fn query_fts(self, pat: &str) -> Result<Self, Self::Error> {
+        let re = Regex::new(pat).map_err(|_| ScoopieError::InvalidRegex(pat.into()))?;
+
+        Ok(Bucket(
+            self.0
+                .into_par_iter()
+                .filter(|(app_name, manifest)| {
+                    re.is_match(&app_name) || re.is_match(&manifest.description)
+                })
+                .collect(),
+        ))
     }
 
-    fn query_app(self, q: &str) -> Self {
-        let predicate = |(app_name, _): &(String, _)| -> bool { app_name == q };
-
-        Bucket(self.0.into_par_iter().filter(predicate).collect())
+    fn query_app(self, app: &str) -> Result<Self, Self::Error> {
+        Ok(Bucket(
+            self.0
+                .into_par_iter()
+                .filter(|(app_name, _)| app_name == app)
+                .collect(),
+        ))
     }
 }

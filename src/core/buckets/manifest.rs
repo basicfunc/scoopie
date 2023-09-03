@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
@@ -6,6 +7,7 @@ use url::Url;
 
 use crate::core::config::*;
 use crate::core::download::{deserialize_hash, Hash};
+use crate::error::ScoopieError;
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 /// This strictly follows Scoop's convention for app manifests, which could be found at: https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests
@@ -75,6 +77,17 @@ where
 impl ToString for Manifest {
     fn to_string(&self) -> String {
         json!(self).to_string()
+    }
+}
+
+impl TryFrom<PathBuf> for Manifest {
+    type Error = ScoopieError;
+
+    fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
+        let buff =
+            std::fs::read_to_string(&value).map_err(|_| ScoopieError::FailedToReadFile(value))?;
+
+        serde_json::from_str::<Manifest>(&buff).map_err(|_| ScoopieError::InvalidManifestInBucket)
     }
 }
 

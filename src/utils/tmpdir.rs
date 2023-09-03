@@ -15,7 +15,7 @@ pub struct TempDir(PathBuf);
 impl TempDir {
     pub fn build() -> Result<Self, ScoopieError> {
         let registered_tmp_dir =
-            env::var("TMP").map_err(|_| ScoopieError::UnableToGetEnvVar(String::from("TMP")))?;
+            env::var("TMP").map_err(|_| ScoopieError::UnableToGetEnvVar("TMP".to_string()))?;
 
         let dir_name = (|| {
             let seed = SystemTime::now()
@@ -34,7 +34,7 @@ impl TempDir {
         let _ = DirBuilder::new()
             .recursive(true)
             .create(&tmp_dir)
-            .map_err(|_| ScoopieError::Sync(crate::error::SyncError::UnableToMkTmpDir))?;
+            .map_err(|_| ScoopieError::UnableToMkTmpDir)?;
 
         Ok(Self(tmp_dir))
     }

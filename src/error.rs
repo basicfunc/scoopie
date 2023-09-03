@@ -4,16 +4,61 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ScoopieError {
-    #[error("While syncing repositories, {0}")]
-    Sync(SyncError),
-    #[error("{0}")]
-    Bucket(BucketError),
-    #[error("{0}")]
-    Init(InitError),
-    #[error("While reading config, {0}")]
-    Config(ConfigError),
-    #[error("{0}")]
-    Download(DownloadError),
+    // Sync Errors
+    #[error("Unable to fetch repository")]
+    SyncUnableToFetchRepo,
+    #[error("Unable to get HEAD of repositoy")]
+    SyncUnableToGetHead,
+    #[error("Unable to get latest commit of repositoy")]
+    SyncUnableToGetCommit,
+
+    // Bucket related errors
+    #[error("No buckets found")]
+    BucketsNotFound,
+    #[error("Failed to read bucket: {0}")]
+    FailedToReadBucket(String),
+    #[error("Invalid JSON format")]
+    InvalidManifestInBucket,
+
+    // Init related errors
+    #[error("Config write error")]
+    ConfigWriteWhileInit,
+
+    // Config related errors
+    #[error("Config file not found")]
+    ConfigNotFound,
+    #[error("Invalid data")]
+    ConfigInvalidData,
+    #[error("Interrupted")]
+    InterruptedConfig,
+    #[error("Unexpected end of file")]
+    UnexpectedEofInConfig,
+    #[error("Invalid TOML")]
+    InvalidConfig,
+
+    // Download related errors
+    #[error("App: \"{0}\" is not available in configured repos.")]
+    NoAppFound(String),
+    #[error("App: \"{0}\" is not available in {1} repo.")]
+    NoAppFoundInBucket(String, String),
+    #[error("Unable to write to file: {0:?}")]
+    FlushFile(PathBuf),
+    #[error("Unable to write downloaded chunk to file: {0:?}")]
+    ChunkWrite(PathBuf),
+    #[error("Unable to download chunk while downloading app: {0}")]
+    UnableToGetChunk(String),
+    #[error("Unable to create file while downloading app: {0}")]
+    UnableToCreateFile(String),
+    #[error("Found wrong digest for {0}")]
+    WrongDigest(String),
+
+    // Query Errors
+    #[error("Invalid Regex: {0}")]
+    InvalidRegex(String),
+
+    // Common Errors
+    #[error("Unable to make temporary directory")]
+    UnableToMkTmpDir,
     #[error("User directory unavailable")]
     UserDirUnavailable,
     #[error("Home directory unavailable")]
@@ -58,66 +103,4 @@ pub enum ScoopieError {
     UnableToGetEnvVar(String),
     #[error("Unknown")]
     Unknown,
-}
-
-#[derive(Debug, Error)]
-pub enum DownloadError {
-    #[error("App: \"{0}\" is not available in configured repos.")]
-    NoAppFound(String),
-    #[error("App: \"{0}\" is not available in {1} repo.")]
-    NoAppFoundInBucket(String, String),
-    #[error("Unable to write to file: {0:?}")]
-    FlushFile(PathBuf),
-    #[error("Unable to write downloaded chunk to file: {0:?}")]
-    ChunkWrite(PathBuf),
-    #[error("Unable to download chunk while downloading app: {0}")]
-    UnableToGetChunk(String),
-    #[error("Unable to create file while downloading app: {0}")]
-    UnableToCreateFile(String),
-    #[error("Found wrong digest for {0}")]
-    WrongDigest(String),
-}
-
-#[derive(Debug, Error)]
-pub enum SyncError {
-    #[error("Unable to make temporary directory")]
-    UnableToMkTmpDir,
-    #[error("Unable to fetch repository")]
-    UnableToFetchRepo,
-    #[error("Unable to get HEAD of repositoy")]
-    UnableToGetHead,
-    #[error("Unable to get latest commit of repositoy")]
-    UnableToGetCommit,
-}
-
-#[derive(Debug, Error)]
-pub enum BucketError {
-    #[error("No buckets found")]
-    BucketsNotFound,
-    #[error("Not Found")]
-    NotFound,
-    #[error("Failed to read bucket: {0}")]
-    FailedToReadBucket(String),
-    #[error("Invalid JSON format")]
-    InvalidManifest,
-}
-
-#[derive(Debug, Error)]
-pub enum InitError {
-    #[error("Config write error")]
-    ConfigWrite,
-}
-
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("Config file not found")]
-    ConfigNotFound,
-    #[error("Invalid data")]
-    InvalidData,
-    #[error("Interrupted")]
-    Interrupted,
-    #[error("Unexpected end of file")]
-    UnexpectedEof,
-    #[error("Invalid TOML")]
-    InvalidConfig,
 }

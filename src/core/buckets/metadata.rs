@@ -18,7 +18,7 @@ pub struct MetaDataEntry {
     pub commit_id: String,
 }
 
-impl MetaData {
+impl<'a> MetaData {
     pub fn read() -> Result<Self, ScoopieError> {
         let metadata_path = Config::buckets_dir()?.join("metadata.json");
         let content = fs::read_to_string(metadata_path).unwrap();
@@ -53,7 +53,7 @@ impl MetaData {
     }
 }
 
-pub fn write_default_metadata() -> Result<(), ScoopieError> {
+pub fn write_default_metadata<'a>() -> Result<(), ScoopieError> {
     let metadata_path = Config::buckets_dir()?.join("metadata.json");
     let mut file = OpenOptions::new()
         .create(true)

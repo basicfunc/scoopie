@@ -6,6 +6,8 @@ mod utils;
 use commands::*;
 
 fn main() {
-    let r = argh::from_env::<Commands>().exec();
-    println!("{:?}", r);
+    match argh::from_env::<Commands>().exec() {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error: {e}"),
+    }
 }
