@@ -49,3 +49,4 @@ colorized = "1.0.0"
 
 # To manipulate registries for current user
 winreg = "0.50.0"
+powershell_script = "1.1.0"
