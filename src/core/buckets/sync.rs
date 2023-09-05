@@ -19,7 +19,7 @@ use git2::build::RepoBuilder;
 use rayon::prelude::*;
 use serde_json::json;
 
-use spinoff::{spinners, Color, Spinner};
+use spinoff::{spinners::Dots, Color::Blue, Spinner};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum SyncStatus {
@@ -81,11 +81,7 @@ impl Sync for Bucket {
         let temp_dir_builder = TempDir::build()?;
         let temp_dir = temp_dir_builder.path();
 
-        let mut sp = Spinner::new(
-            spinners::Dots,
-            format!("Fetching bucket {name}..."),
-            Color::Blue,
-        );
+        let mut sp = Spinner::new(Dots, format!("Fetching bucket {name}..."), Blue);
 
         let repo = RepoBuilder::new()
             .clone(url, &temp_dir)

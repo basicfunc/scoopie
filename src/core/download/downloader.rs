@@ -3,9 +3,9 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::iter::zip;
 
+use colorized::*;
+use spinoff::{spinners::Dots, Color::Blue, Spinner};
 use url::Url;
-
-use spinoff::{spinners, Color, Spinner};
 
 use super::Hash;
 
@@ -60,50 +60,54 @@ impl Downloader {
     }
 }
 
-fn download(
-    url: &str,
-    file_name: &str,
-    verify: Option<&Hash>,
-) -> Result<DownloadStatus, ScoopieError> {
-    let file_path = Config::cache_dir()?.join(file_name);
+fn download(url: &str, fname: &str, verify: Option<&Hash>) -> Result<DownloadStatus, ScoopieError> {
+    let file_path = Config::cache_dir()?.join(fname);
 
-    let res = ureq::get(url).call().unwrap();
+    let request = ureq::get(url);
 
-    let total_size = match res.header("content-length") {
-        Some(size) => size.parse::<usize>().unwrap_or(0),
+    let response = request.call().map_err(|_| ScoopieError::FailedToSendReq)?;
+
+    let total_size = match response.header("content-length") {
+        Some(size) => size.parse::<u64>().unwrap_or(0),
         None => 0,
     };
 
     let downloader = || -> Result<DownloadStatus, ScoopieError> {
         let mut file = BufWriter::new(
             File::create(&file_path)
-                .map_err(|_| ScoopieError::UnableToCreateFile(file_name.to_string()))?,
+                .map_err(|_| ScoopieError::UnableToCreateFile(fname.to_string()))?,
         );
 
         let mut downloaded = 0;
-        let mut stream = res.into_reader();
-        let mut chunk = [0; 1024 * 1024];
+        let mut chunk = [0; 4096];
 
-        let mut sp = Spinner::new(
-            spinners::Dots,
-            format!("Downloading {file_name}"),
-            Color::Blue,
-        );
+        let pkg_name = if fname.len() < 32 {
+            fname.to_string()
+        } else {
+            format!("{}", &fname[..32])
+        };
+
+        let mut sp = Spinner::new(Dots, format!("Collecting {pkg_name}"), Blue);
+
+        let mut stream = response.into_reader();
 
         loop {
-            match stream
+            let bytes_read = stream
                 .read(&mut chunk)
-                .map_err(|_| ScoopieError::UnableToGetChunk(file_name.into()))?
-            {
-                0 => break,
-                bytes => {
-                    file.write_all(&chunk[..bytes])
-                        .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
-                    downloaded += bytes;
-                    let percentage = (downloaded as f64 / total_size as f64) * 100.0;
-                    sp.update_text(format!("Downloading {file_name}: {:.2}%", percentage));
-                }
+                .map_err(|_| ScoopieError::UnableToGetChunk(fname.into()))?;
+
+            if bytes_read == 0 {
+                break;
             }
+
+            file.write_all(&chunk[..bytes_read])
+                .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
+            downloaded += bytes_read;
+            let percentage = (downloaded as f64 / total_size as f64) * 100.0;
+
+            sp.update_text(format!(
+                "Collecting {pkg_name}: {percentage:.2}% ({downloaded}/{total_size})"
+            ));
         }
 
         file.flush()
@@ -112,14 +116,19 @@ fn download(
         match verify {
             Some(hash) => match hash.verify(&file_path)? {
                 true => {
-                    sp.success(&format!("Downloaded and verified {file_name}"));
-                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
+                    sp.success(&format!("Successfully downloaded and verified {fname}"));
+                    Ok(DownloadStatus::DownloadedAndVerified(fname.into()))
                 }
-                false => Err(ScoopieError::WrongDigest(file_name.into())),
+                false => {
+                    sp.fail(&format!(
+                        "Successfully downloaded but failed to verified {fname}"
+                    ));
+                    Err(ScoopieError::WrongDigest(fname.into()))
+                }
             },
             None => {
-                sp.success(&format!("Downloaded {file_name}"));
-                Ok(DownloadStatus::Downloaded(file_name.into()))
+                sp.success(&format!("Successfully downloaded {fname}"));
+                Ok(DownloadStatus::Downloaded(fname.into()))
             }
         }
     };
@@ -129,10 +138,10 @@ fn download(
             .or(Err(ScoopieError::FailedToGetMetadata(
                 file_path.to_path_buf(),
             )))?
-            .len() as usize
+            .len()
             == total_size
         {
-            true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
+            true => Ok(DownloadStatus::AlreadyInCache(fname.into())),
             false => {
                 file_path.rm()?;
                 downloader()

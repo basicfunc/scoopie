@@ -41,8 +41,11 @@ thiserror = "1.0.41"
 # To download packages from remote
 ureq = "2.7.1"
 
-# To shows progress bars
-spinoff = "0.8.0"
+# To show spinners instead of waiting
+spinoff = { version = "0.8.0", features = ["dots"] }
+
+# To shows colors in terminal
+colorized = "1.0.0"
 
 # To manipulate registries for current user
 winreg = "0.50.0"

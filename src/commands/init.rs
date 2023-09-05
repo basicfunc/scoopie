@@ -19,7 +19,8 @@ pub struct InitCommand {
 
 impl ExecuteCommand for InitCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
-        let home_dir = EnvVar::home_dir()?;
+        #[allow(deprecated)]
+        let home_dir = std::env::home_dir().ok_or(ScoopieError::UserDirUnavailable)?;
 
         let scoopie_path = match &self.path {
             Some(path) => path.absolute()?,

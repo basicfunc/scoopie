@@ -30,21 +30,21 @@ impl ExecuteCommand for InstallCommand {
         if self.sync {
             let status = Buckets::sync();
             println!("{:?}", status);
-            Ok(())
         } else if self.download_only {
             match &self.app {
                 Some(app) => {
-                    let status = Downloader::download(app, true);
-                    println!("{:?}", status);
+                    let st = Downloader::download(app, true);
+                    println!("{:?}", st);
                 }
-                None => eprintln!("App argument required"),
+                None => {
+                    eprintln!("App argument required");
+                }
             };
-            Ok(())
         } else {
             let app = self.app.as_ref().unwrap();
             let _ = install(app);
-
-            Ok(())
         }
+
+        Ok(())
     }
 }

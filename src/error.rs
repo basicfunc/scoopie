@@ -39,6 +39,8 @@ pub enum ScoopieError {
     // Download related errors
     #[error("App: \"{0}\" is not available in configured repos.")]
     NoAppFound(String),
+    #[error("Failed to send download request to server.")]
+    FailedToSendReq,
     #[error("App: \"{0}\" is not available in {1} repo.")]
     NoAppFoundInBucket(String, String),
     #[error("Unable to write to file: {0:?}")]

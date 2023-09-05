@@ -10,6 +10,7 @@ pub use sync::*;
 
 use std::{collections::HashMap, fmt, format, write};
 
+use colorized::*;
 use serde::{Deserialize, Serialize};
 
 pub type AppName = String;
@@ -41,9 +42,15 @@ impl fmt::Display for Buckets {
             "{}",
             self.0
                 .iter()
-                .flat_map(|(name, bucket)| {
-                    bucket.0.iter().map(move |(a, m)| {
-                        format!("{a}/{name}  (v{})\n  {}\n\n", m.version, m.description)
+                .flat_map(|(bucket_name, bucket)| {
+                    let bucket_name = bucket_name.color(Colors::BlueFg);
+
+                    bucket.0.iter().map(move |(app_name, manifest)| {
+                        let app = app_name.color(Colors::GreenFg);
+                        let version =
+                            colorize_this(format!("v{}", manifest.version), Colors::BrightBlackFg);
+                        let desc = manifest.description.color(Colors::BrightWhiteFg);
+                        format!("{app}/{bucket_name}  {version}\n  {desc}\n")
                     })
                 })
                 .collect::<String>()
