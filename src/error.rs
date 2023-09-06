@@ -1,108 +1,174 @@
-use std::path::PathBuf;
+use std::{
+    error::Error,
+    fmt::{Display, Formatter, Result},
+    path::PathBuf,
+};
 
-use thiserror::Error;
-
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum ScoopieError {
-    // Sync Errors
-    #[error("Unable to fetch repository")]
+    // Sync related Errors
     SyncUnableToFetchRepo,
-    #[error("Unable to get HEAD of repositoy")]
     SyncUnableToGetHead,
-    #[error("Unable to get latest commit of repositoy")]
     SyncUnableToGetCommit,
 
     // Bucket related errors
-    #[error("No buckets found")]
     BucketsNotFound,
-    #[error("Failed to read bucket: {0}")]
     FailedToReadBucket(String),
-    #[error("Invalid JSON format")]
     InvalidManifestInBucket,
 
     // Init related errors
-    #[error("Config write error")]
     ConfigWriteWhileInit,
+    DirAlreadyExists(PathBuf),
 
     // Config related errors
-    #[error("Config file not found")]
     ConfigNotFound,
-    #[error("Invalid data")]
     ConfigInvalidData,
-    #[error("Interrupted")]
     InterruptedConfig,
-    #[error("Unexpected end of file")]
     UnexpectedEofInConfig,
-    #[error("Invalid TOML")]
     InvalidConfig,
 
     // Download related errors
-    #[error("App: \"{0}\" is not available in configured repos.")]
     NoAppFound(String),
-    #[error("Failed to send download request to server.")]
     FailedToSendReq,
-    #[error("App: \"{0}\" is not available in {1} repo.")]
+    RequestFailed(String, String),
     NoAppFoundInBucket(String, String),
-    #[error("Unable to write to file: {0:?}")]
     FlushFile(PathBuf),
-    #[error("Unable to write downloaded chunk to file: {0:?}")]
     ChunkWrite(PathBuf),
-    #[error("Unable to download chunk while downloading app: {0}")]
     UnableToGetChunk(String),
-    #[error("Unable to create file while downloading app: {0}")]
     UnableToCreateFile(String),
-    #[error("Found wrong digest for {0}")]
     WrongDigest(String),
 
     // Query Errors
-    #[error("Invalid Regex: {0}")]
     InvalidRegex(String),
 
     // Common Errors
-    #[error("Unable to make temporary directory")]
     UnableToMkTmpDir,
-    #[error("User directory unavailable")]
     UserDirUnavailable,
-    #[error("Home directory unavailable")]
     HomeDirUnavailable,
-    #[error("Cache directory unavailable")]
     CacheDirUnavailable,
-    #[error("Repos directory unavailable")]
     BucketsDirUnavailable,
-    #[error("Apps directory unavailable")]
     AppsDirUnavailable,
-    #[error("Shims directory unavailable")]
     ShimsDirUnavailable,
-    #[error("Persist directory unavailable")]
     PersistDirUnavailable,
-    #[error("Directory already exists: {0:?}")]
-    DirAlreadyExists(PathBuf),
-    #[error("While resolving absolute path")]
     AbsoultePathResolve,
-    #[error("While resolving environment variable")]
     EnvResolve,
-    #[error("While removing environment variable")]
     EnvRemove,
-    #[error("While setting value for environment variable")]
     EnvSet,
-    #[error("Failed to create directory: {0:?}")]
     FailedToMkdir(PathBuf),
-    #[error("Permission Denied")]
     PermissionDenied,
-    #[error("{0:?} file not found")]
     FileNotExist(PathBuf),
-    #[error("Failed to open file: {0:?}")]
     FailedToOpenFile(PathBuf),
-    #[error("Failed to read file: {0:?}")]
     FailedToReadFile(PathBuf),
-    #[error("Failed to get metadata for file: {0:?}")]
     FailedToGetMetadata(PathBuf),
-    #[error("Unable to open environment in current user registry")]
     UnableToOpenEnvRegistry,
-    #[error("Your CPU architecture is not supported")]
     UnsupportedArch,
-    #[error("Unable to get environment variable: {0}")]
     UnableToGetEnvVar(String),
-    #[error("Unknown")]
     Unknown,
+}
+
+impl Error for ScoopieError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
+
+impl Display for ScoopieError {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            // Sync related Errors
+            ScoopieError::SyncUnableToFetchRepo => write!(f, "Unable to fetch repository"),
+            ScoopieError::SyncUnableToGetHead => write!(f, "Unable to get HEAD of repository"),
+            ScoopieError::SyncUnableToGetCommit => {
+                write!(f, "Unable to get latest commit of repository")
+            }
+
+            // Bucket related errors
+            ScoopieError::BucketsNotFound => write!(f, "No buckets found"),
+            ScoopieError::FailedToReadBucket(bucket) => {
+                write!(f, "Failed to read bucket: {bucket}")
+            }
+            ScoopieError::InvalidManifestInBucket => write!(f, "Invalid JSON format"),
+
+            // Init related errors
+            ScoopieError::ConfigWriteWhileInit => write!(f, "Config write error"),
+            ScoopieError::DirAlreadyExists(dir) => write!(f, "Unable to initialize scoopie as \"{}\" already exists", dir.display()),
+
+            // Config related errors
+            ScoopieError::ConfigNotFound => write!(f, "Config file not found"),
+            ScoopieError::ConfigInvalidData => write!(f, "Invalid data in config"),
+            ScoopieError::InterruptedConfig => write!(f, "Config found to be interrupted"),
+            ScoopieError::UnexpectedEofInConfig => write!(f, "Unexpected EOF occured in config"),
+            ScoopieError::InvalidConfig => {
+                write!(f, "Config found to be not following config specs")
+            }
+
+            // Download related errors
+            ScoopieError::NoAppFound(app) => {
+                write!(f, "Unable to find: \"{app}\" in any configured bucket")
+            }
+            ScoopieError::NoAppFoundInBucket(app, bucket) => {
+                write!(f, "Unable to find: \"{app}\" in \"{bucket}\" bucket")
+            }
+            ScoopieError::FailedToSendReq => {
+                write!(
+                    f,
+                    "Failed to send request to server. Hint: Check your network settings"
+                )
+            }
+            ScoopieError::RequestFailed(pkg, reason) => {
+                write!(f, "Request failed to download: \"{pkg}\" due to {reason}.")
+            }
+            ScoopieError::FlushFile(file) => {
+                write!(f, "Failed to close file: \"{}\" properly", file.display())
+            }
+            ScoopieError::ChunkWrite(file) => {
+                write!(
+                    f,
+                    "Failed to write downloaded buffer to file: \"{}\"",
+                    file.display()
+                )
+            }
+            ScoopieError::UnableToGetChunk(pkg) => write!(
+                f,
+                "Failed to download buffer from server while downloading package: \"{pkg}\""
+            ),
+            ScoopieError::UnableToCreateFile(pkg) => write!(
+                f,
+                "Failed to create file while downloading package: \"{pkg}\""
+            ),
+            ScoopieError::WrongDigest(pkg) => write!(f, "Failed to verify package: \"{pkg}\" due to wrong digest in manifest. Hint: Please open a issue regarding this"),
+            
+            // Query Errors            
+            ScoopieError::InvalidRegex(pat) => write!(f, "Query failed due to invalid regex pattern: \"{pat}\""),
+            
+
+            // Common Errors
+            ScoopieError::UnableToMkTmpDir => write!(f, "Failed to make temporary directory"),
+            ScoopieError::UserDirUnavailable => write!(f, "Failed to retrieve current user directory"),
+            ScoopieError::HomeDirUnavailable => write!(f, "Failed to retrieve scoopie home directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::CacheDirUnavailable => write!(f, "Failed to retrieve scoopie cache directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::BucketsDirUnavailable => write!(f, "Failed to retrieve scoopie buckets directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::AppsDirUnavailable => write!(f, "Failed to retrieve scoopie apps directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::ShimsDirUnavailable => write!(f, "Failed to retrieve scoopie shims directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::PersistDirUnavailable => write!(f, "Failed to retrieve scoopie persist directory. Hint: Check if $SCOOPIE_HOME is set correctly and it is properly initialized, if not then first run \"scoopie nuke\" and then \"scoopie init <your_desired_directory>\""),
+            ScoopieError::AbsoultePathResolve => write!(f, "Failed to resolve path"),
+            ScoopieError::EnvResolve => write!(f, "Failed to resolve environment variables"),
+            ScoopieError::EnvRemove => write!(f, "Failed to remove environment variables"),
+            ScoopieError::EnvSet => write!(f, "Failed to set environment variable"),
+            ScoopieError::FailedToMkdir(dir) => write!(f, "Failed to create directory: \"{}\"", dir.display()),
+            ScoopieError::PermissionDenied => write!(f, "Failed due to permission denial"),
+            ScoopieError::FileNotExist(file) => write!(f, "Failed as file: \"{}\" not found", file.display()),
+            ScoopieError::FailedToOpenFile(file) => write!(f, "Failed to open file: \"{}\"", file.display()),
+            ScoopieError::FailedToReadFile(file) => write!(f, "Failed to read file: \"{}\"", file.display()),
+            ScoopieError::FailedToGetMetadata(file) => write!(f, "Failed to get metadata of file: \"{}\"", file.display()),
+            ScoopieError::UnableToOpenEnvRegistry => write!(f, "Failed to open Environment Registry to perform environment variable function"),
+            ScoopieError::UnsupportedArch => write!(f, "Failed as current architecture is not supported."),
+            ScoopieError::UnableToGetEnvVar(var) => write!(f, "Failed to get environment variable: \"{var}\" from current user's registry"),
+            ScoopieError::Unknown => write!(f, "Unknow error occured"),
+        }
+    }
 }
