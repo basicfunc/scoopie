@@ -1,9 +1,11 @@
-use std::format;
-use std::fs::{self, File};
-use std::io::{BufWriter, Write};
-use std::iter::zip;
+use std::{
+    fs::{metadata, File},
+    io::{BufWriter, Read, Write},
+    iter::zip,
+};
 
-use spinoff::{spinners::Dots, Color::Blue, Spinner};
+use indicatif::{ProgressBar, ProgressStyle};
+use regex_lite::Regex;
 use url::Url;
 
 use super::Hash;
@@ -13,6 +15,10 @@ use {
     crate::error::*,
     crate::utils::*,
 };
+
+const TEMPLATE: &'static str =
+    " {spinner:.black} {wide_msg} |{bar:>.green}| ({percent:<}%, {binary_bytes_per_sec:<.black})";
+const TICK_CHARS: &'static str = "⠁⠂⠄⡀⢀⠠⠐⠈ ";
 
 #[derive(Debug)]
 pub enum DownloadStatus {
@@ -51,55 +57,54 @@ impl Downloader {
 
         zip(urls, hashes)
             .map(|(url, hash)| {
-                let file = extract_file_name(&app_name, version, &url);
+                let (pkg_name, file) = extract_names(&app_name, version, &url);
                 let hash = if verify { Some(&hash) } else { None };
-                download(url.as_str(), &file, hash)
+                dwnld(&pkg_name, url.as_str(), &file, hash)
             })
             .collect::<Result<Vec<_>, _>>()
     }
 }
 
-fn download(url: &str, fname: &str, verify: Option<&Hash>) -> Result<DownloadStatus, ScoopieError> {
-    let file_path = Config::cache_dir()?.join(fname);
+fn dwnld(
+    pkg_name: &str,
+    url: &str,
+    file_name: &str,
+    verify: Option<&Hash>,
+) -> Result<DownloadStatus, ScoopieError> {
+    let file_path = Config::cache_dir()?.join(file_name);
 
-    let request = ureq::get(url);
+    let request = minreq::get(url);
 
-    let response = request.call().map_err(|_| ScoopieError::FailedToSendReq)?;
+    let mut response = request
+        .send_lazy()
+        .map_err(|_| ScoopieError::FailedToSendReq)?;
 
-    let status = response.status();
-
-    if status < 200 || status > 299 {
-        let st = response.status_text().to_string();
-        Err(ScoopieError::RequestFailed(fname.into(), status, st))
-    } else {
-        let total_size = match response.header("content-length") {
+    if response.status_code >= 200 && response.status_code <= 299 {
+        let total_size = match response.headers.get("content-length") {
             Some(size) => size.parse::<u64>().unwrap_or(0),
             None => 0,
         };
 
-        let downloader = || -> Result<DownloadStatus, ScoopieError> {
+        let mut downloader = || {
             let mut file = BufWriter::new(
                 File::create(&file_path)
-                    .map_err(|_| ScoopieError::UnableToCreateFile(fname.to_string()))?,
+                    .map_err(|_| ScoopieError::UnableToCreateFile(file_name.into()))?,
             );
 
-            let mut downloaded = 0;
-            let mut chunk = [0; 1024 * 1024];
+            let mut chunk = [0; 4096];
 
-            let pkg_name = if fname.len() < 32 {
-                fname.to_string()
-            } else {
-                format!("{}", &fname[..32])
-            };
+            let style = ProgressStyle::with_template(TEMPLATE)
+                .unwrap()
+                .tick_chars(TICK_CHARS);
 
-            let mut sp = Spinner::new(Dots, format!("Collecting {pkg_name}"), Blue);
-
-            let mut stream = response.into_reader();
+            let pb = ProgressBar::new(total_size);
+            pb.set_style(style);
+            pb.set_message(format!("Collecting {pkg_name}"));
 
             loop {
-                let bytes_read = stream
+                let bytes_read = response
                     .read(&mut chunk)
-                    .map_err(|_| ScoopieError::UnableToGetChunk(fname.into()))?;
+                    .map_err(|_| ScoopieError::UnableToGetChunk(file_name.into()))?;
 
                 if bytes_read == 0 {
                     break;
@@ -107,12 +112,8 @@ fn download(url: &str, fname: &str, verify: Option<&Hash>) -> Result<DownloadSta
 
                 file.write_all(&chunk[..bytes_read])
                     .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
-                downloaded += bytes_read;
-                let percentage = (downloaded as f64 / total_size as f64) * 100.0;
 
-                sp.update_text(format!(
-                    "Collecting {pkg_name}: {percentage:.2}% ({downloaded}/{total_size})"
-                ));
+                pb.inc(bytes_read as u64);
             }
 
             file.flush()
@@ -120,56 +121,122 @@ fn download(url: &str, fname: &str, verify: Option<&Hash>) -> Result<DownloadSta
 
             match verify {
                 Some(hash) => match hash.verify(&file_path)? {
-                    true => {
-                        sp.success(&format!("Successfully downloaded and verified {fname}"));
-                        Ok(DownloadStatus::DownloadedAndVerified(fname.into()))
-                    }
-                    false => {
-                        sp.fail(&format!(
-                            "Successfully downloaded but failed to verified {fname}"
-                        ));
-                        Err(ScoopieError::WrongDigest(fname.into()))
-                    }
+                    true => Ok(DownloadStatus::DownloadedAndVerified(file_name.into())),
+                    false => Err(ScoopieError::WrongDigest(file_name.into())),
                 },
-                None => {
-                    sp.success(&format!("Successfully downloaded {fname}"));
-                    Ok(DownloadStatus::Downloaded(fname.into()))
-                }
+                None => Ok(DownloadStatus::Downloaded(file_name.into())),
             }
         };
 
-        match file_path.exists() {
-            true => match fs::metadata(&file_path)
-                .or(Err(ScoopieError::FailedToGetMetadata(
-                    file_path.to_path_buf(),
-                )))?
-                .len()
-                == total_size
-            {
-                true => Ok(DownloadStatus::AlreadyInCache(fname.into())),
+        if file_path.exists() {
+            let file_metadata = metadata(&file_path)
+                .map_err(|_| (ScoopieError::FailedToGetMetadata(file_path.to_path_buf())))?;
+
+            match file_metadata.len().eq(&total_size) {
+                true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
                 false => {
                     file_path.rm()?;
                     downloader()
                 }
-            },
-            false => downloader(),
+            }
+        } else {
+            downloader()
         }
+    } else {
+        Err(ScoopieError::RequestFailed(
+            file_name.into(),
+            response.reason_phrase,
+        ))
     }
 }
 
-fn extract_file_name(app_name: &str, version: &str, url: &Url) -> String {
-    const TO_BE_REMOVED_CHARS: &[&str] = &[":", "#", "?", "&", "="];
-    const TO_BE_REPLACED_CHARS: &[&str] = &["//", "/", "+"];
+fn extract_names(app_name: &str, version: &str, url: &Url) -> (String, String) {
+    let pkg_name = match url.path_segments() {
+        Some(segments) => segments.last().unwrap_or_default(),
+        None => "",
+    }
+    .to_lowercase();
 
-    let url = url.path().to_string();
+    let file_name = format!("{app_name}#{version}#{}", sanitize(url.path()));
 
-    let sanitized_fname = TO_BE_REMOVED_CHARS
-        .iter()
-        .fold(url, |fname, &c| fname.replace(c, ""));
+    (pkg_name, file_name)
+}
 
-    let sanitized_fname = TO_BE_REPLACED_CHARS
-        .iter()
-        .fold(sanitized_fname, |fname, &c| fname.replace(c, "_"));
+/// Sanitizes a given input string to make it safe for use as a filename across various operating systems.
+///
+/// This function takes an input string and performs the following operations:
+///
+/// 1. Replaces reserved characters and control characters with underscores (`_`) to ensure the resulting filename is valid.
+///    Reserved characters and control characters include: `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`, and certain control characters (from `0x0000` to `0x001F`, `0x007F` to `0x009F`).
+/// 2. Handles cases specific to Windows, where certain filenames are reserved for historical reasons. It checks if the resulting filename matches any of the reserved Windows filenames and appends an underscore if needed. Reserved Windows filenames include: `CON`, `PRN`, `AUX`, `NUL`, `COM1` through `COM9`, and `LPT1` through `LPT9`.
+///
+/// # Arguments
+///
+/// * `input` - A value that can be converted to a string (e.g., `&str`, `String`) representing the input filename.
+///
+/// # Returns
+///
+/// A sanitized string that can be safely used as a filename on various operating systems.
+///
+/// # Platform-Specific Considerations
+///
+/// - On Windows, this function performs additional checks for reserved filenames, ensuring compliance with historical constraints.
+///
+/// # Examples
+///
+/// ```rust
+/// let input = "my<file>:name.txt";
+/// let sanitized = sanitize(input);
+/// assert_eq!(sanitized, "my_file_name.txt");
+/// ```
+///
+/// ```rust
+/// // On Windows, this will append an underscore to match the reserved filename "CON".
+/// let input = "CON";
+/// let sanitized = sanitize(input);
+/// assert_eq!(sanitized, "CON_");
+/// ```
+///
+/// # Note
+///
+/// This function provides a best-effort approach to sanitizing filenames and does not guarantee uniqueness. Filenames should still be used with caution, and additional measures may be necessary to ensure uniqueness in a specific context.
+///
+/// # References
+///
+/// For the most up-to-date and detailed information about reserved file name patterns, consult the official documentation for the specific operating system and file system you are working with.
+///
+/// - **Windows:** Microsoft's documentation, including MSDN and official Windows documentation, often provides information on reserved file names and characters.
+/// - **Linux and Unix-like systems:** Documentation for the specific file system you are using (e.g., ext4, XFS) and the Linux Filesystem Hierarchy Standard (FHS) can provide insights into file naming conventions.
+/// - **macOS:** macOS follows Unix conventions, so you can refer to Unix and macOS documentation for guidance.
+///
+/// # Safety
+///
+/// This function should be safe to use in typical scenarios. However, improper use or reliance on this function as the sole means of ensuring filename safety may still result in issues in specific edge cases or unusual contexts.
+///
+/// Always consider the specific requirements and constraints of your application when working with filenames.
+///
+fn sanitize<T: AsRef<str>>(input: T) -> String {
+    const REPLACEMENT: &str = "_";
 
-    format!("{app_name}#{version}#{sanitized_fname}")
+    // Create regex patterns
+    let reserved_pattern =
+        Regex::new("[<>:\"/\\\\|?*\u{0000}-\u{001F}\u{007F}\u{0080}-\u{009F}]+").unwrap();
+    let outer_periods_pattern = Regex::new("^\\.+|\\.+$").unwrap();
+
+    // Apply regex replacements and conversions
+    let result = reserved_pattern.replace_all(input.as_ref(), REPLACEMENT);
+    let result = outer_periods_pattern
+        .replace_all(&result, REPLACEMENT)
+        .to_string();
+
+    // Windows-specific checks to match any of the reserved Windows filenames
+    #[cfg(windows)]
+    {
+        let windows_reserved_pattern = Regex::new("^(con|prn|aux|nul|com\\d|lpt\\d)$").unwrap();
+        if windows_reserved_pattern.is_match(result.as_str()) {
+            return result + REPLACEMENT;
+        }
+    }
+
+    result
 }
