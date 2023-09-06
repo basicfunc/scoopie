@@ -35,17 +35,14 @@ serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.99"
 url = { version = "2.4.0", features = ["serde"] }
 
-# For error handling
-thiserror = "1.0.41"
-
 # To download packages from remote
-ureq = "2.7.1"
+minreq = { version = "2.10.0", features = ["https-rustls"] }
 
 # To show spinners instead of waiting
-spinoff = { version = "0.8.0", features = ["dots"] }
+indicatif = "0.17.6"
 
 # To shows colors in terminal
-colorized = "1.0.0"
+console = "0.15.7"
 
 # To manipulate registries for current user
 winreg = "0.50.0"
