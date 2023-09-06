@@ -4,9 +4,9 @@ use winreg::{enums::*, RegKey};
 
 use crate::error::ScoopieError;
 
-pub struct EnvVar;
+pub struct Env;
 
-impl EnvVar {
+impl Env {
     pub fn home_dir() -> Result<PathBuf, ScoopieError> {
         let curr_user = RegKey::predef(HKEY_CURRENT_USER);
         let vars = curr_user

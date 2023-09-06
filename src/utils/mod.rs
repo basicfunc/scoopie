@@ -1,4 +1,4 @@
-mod env_var;
+mod env;
 mod tmpdir;
 
 use crate::error::ScoopieError;
@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-pub use env_var::EnvVar;
+pub use env::Env;
 pub use tmpdir::TempDir;
 
 pub trait Remove {
