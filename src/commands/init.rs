@@ -1,5 +1,5 @@
 use argh::FromArgs;
-use std::path::PathBuf;
+use std::{fs::File, path::PathBuf};
 
 use crate::{
     core::{buckets::write_default_metadata, config::*},
@@ -21,25 +21,16 @@ impl InitCommand {
     fn create_dirs(curr_dir: &PathBuf) -> Result<(), ScoopieError> {
         ["apps", "buckets", "cache", "persists", "shims"]
             .iter()
-            .try_for_each(|dir| PathBuf::create(curr_dir.join(dir)))
+            .try_for_each(|dir| PathBuf::create(&curr_dir.join(dir)))
     }
 
     fn init_scoopie(scoopie_path: &PathBuf) -> Result<(), ScoopieError> {
         let scoopie_dir = scoopie_path.join("apps/scoopie");
 
         if !scoopie_dir.exists() {
-            PathBuf::create(scoopie_dir)?;
+            PathBuf::create(&scoopie_dir)?;
+            PathBuf::create(&scoopie_dir.join("bin"))?;
         }
-
-        Ok(())
-    }
-
-    fn install_7z(scoopie_dir: &PathBuf) -> Result<(), ScoopieError> {
-        let url = "https://www.7-zip.org/a/7zr.exe";
-
-        let request = minreq::get(url);
-
-        let response = request.send().map_err(|_| ScoopieError::FailedToSendReq)?;
 
         Ok(())
     }
@@ -47,7 +38,7 @@ impl InitCommand {
 
 impl ExecuteCommand for InitCommand {
     fn exec(&self) -> Result<(), ScoopieError> {
-        let home_dir = Env::home_dir()?;
+        let home_dir = Pwsh::home_dir()?;
 
         let scoopie_path = match &self.path {
             Some(path) => path.absolute()?,
@@ -61,12 +52,14 @@ impl ExecuteCommand for InitCommand {
 
         Self::create_dirs(&scoopie_path)?;
 
+        Self::init_scoopie(&scoopie_path)?;
+
         write_default_metadata()?;
 
         let config_dir = home_dir.join(".config");
 
         if !config_dir.exists() {
-            PathBuf::create(config_dir.clone())?;
+            PathBuf::create(&config_dir)?;
         }
 
         let scoopie_config = config_dir.join("scoopie.json");
@@ -75,7 +68,7 @@ impl ExecuteCommand for InitCommand {
             Config::write(&scoopie_config)?;
         }
 
-        Env::create_or_update(
+        Pwsh::create_or_update(
             "SCOOPIE_HOME",
             scoopie_path.as_path().to_str().unwrap_or_default(),
         )?;
@@ -88,4 +81,15 @@ impl ExecuteCommand for InitCommand {
 
         Ok(())
     }
+}
+
+fn download(file: PathBuf, url: &str) -> Result<(), ScoopieError> {
+    let req = minreq::get(url);
+    let res = req.send().unwrap();
+
+    let mut file = File::create(file).unwrap();
+
+    std::io::copy(&mut res.as_bytes(), &mut file).unwrap();
+
+    Ok(())
 }

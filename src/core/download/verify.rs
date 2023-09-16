@@ -1,12 +1,3 @@
-// To compute hashes
-use {
-    digest::Digest,
-    md5::Md5,
-    sha1::Sha1,
-    sha2::{Sha256, Sha512},
-};
-
-// To implement De/Serialization of Hash
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
@@ -86,22 +77,37 @@ impl Hash {
             .map_err(|_| ScoopieError::FailedToReadFile(path.to_path_buf()))?;
 
         let (expected_hash, computed_hash) = match self {
-            Hash::SHA256(hash) => (
-                hash.to_lowercase(),
-                hex::encode(Sha256::digest(buff)).to_lowercase(),
-            ),
-            Hash::SHA512(hash) => (
-                hash.to_lowercase(),
-                hex::encode(Sha512::digest(buff)).to_lowercase(),
-            ),
-            Hash::SHA1(hash) => (
-                hash.to_lowercase(),
-                hex::encode(Sha1::digest(buff)).to_lowercase(),
-            ),
-            Hash::MD5(hash) => (
-                hash.to_lowercase(),
-                hex::encode(Md5::digest(buff)).to_lowercase(),
-            ),
+            Hash::SHA256(hash) => {
+                use sha2::{Digest, Sha256};
+                (
+                    hash.to_lowercase(),
+                    hex::encode(Sha256::digest(buff)).to_lowercase(),
+                )
+            }
+            Hash::SHA512(hash) => {
+                use sha2::{Digest, Sha512};
+
+                (
+                    hash.to_lowercase(),
+                    hex::encode(Sha512::digest(buff)).to_lowercase(),
+                )
+            }
+            Hash::SHA1(hash) => {
+                use sha1::{Digest, Sha1};
+
+                (
+                    hash.to_lowercase(),
+                    hex::encode(Sha1::digest(buff)).to_lowercase(),
+                )
+            }
+            Hash::MD5(hash) => {
+                use md5::{Digest, Md5};
+
+                (
+                    hash.to_lowercase(),
+                    hex::encode(Md5::digest(buff)).to_lowercase(),
+                )
+            }
         };
 
         Ok(expected_hash == computed_hash)

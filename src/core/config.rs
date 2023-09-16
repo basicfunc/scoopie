@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::error::*;
-use crate::utils::Env;
+use crate::utils::Pwsh;
 
 use serde::{Deserialize, Serialize};
 
@@ -100,7 +100,7 @@ impl Reader for Config {
     type Error = ScoopieError;
 
     fn read() -> Result<Self, Self::Error> {
-        let home_dir = Env::home_dir()?;
+        let home_dir = Pwsh::home_dir()?;
         let scoopie_config = home_dir.join(".config\\scoopie.json");
 
         match scoopie_config.exists() {

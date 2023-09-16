@@ -2,10 +2,12 @@ use std::{
     fs::{metadata, File},
     io::{BufWriter, Read, Write},
     iter::zip,
+    unreachable,
 };
 
-use indicatif::{ProgressBar, ProgressStyle};
+use colored::*;
 use regex_lite::Regex;
+use spinoff::{spinners::Dots, Color::Blue, Spinner};
 use url::Url;
 
 use super::Hash;
@@ -15,10 +17,6 @@ use {
     crate::error::*,
     crate::utils::*,
 };
-
-const TEMPLATE: &'static str =
-    " {spinner:.black} {wide_msg} |{bar:>.green}| ({percent:<}%, {binary_bytes_per_sec:<.black})";
-const TICK_CHARS: &'static str = "⠁⠂⠄⡀⢀⠠⠐⠈ ";
 
 #[derive(Debug)]
 pub enum DownloadStatus {
@@ -79,74 +77,83 @@ fn dwnld(
         .send_lazy()
         .map_err(|_| ScoopieError::FailedToSendReq)?;
 
-    if response.status_code >= 200 && response.status_code <= 299 {
-        let total_size = match response.headers.get("content-length") {
-            Some(size) => size.parse::<u64>().unwrap_or(0),
-            None => 0,
-        };
-
-        let mut downloader = || {
-            let mut file = BufWriter::new(
-                File::create(&file_path)
-                    .map_err(|_| ScoopieError::UnableToCreateFile(file_name.into()))?,
-            );
-
-            let mut chunk = [0; 4096];
-
-            let style = ProgressStyle::with_template(TEMPLATE)
-                .unwrap()
-                .tick_chars(TICK_CHARS);
-
-            let pb = ProgressBar::new(total_size);
-            pb.set_style(style);
-            pb.set_message(format!("Collecting {pkg_name}"));
-
-            loop {
-                let bytes_read = response
-                    .read(&mut chunk)
-                    .map_err(|_| ScoopieError::UnableToGetChunk(file_name.into()))?;
-
-                if bytes_read == 0 {
-                    break;
-                }
-
-                file.write_all(&chunk[..bytes_read])
-                    .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
-
-                pb.inc(bytes_read as u64);
-            }
-
-            file.flush()
-                .map_err(|_| ScoopieError::FlushFile(file_path.to_path_buf()))?;
-
-            match verify {
-                Some(hash) => match hash.verify(&file_path)? {
-                    true => Ok(DownloadStatus::DownloadedAndVerified(file_name.into())),
-                    false => Err(ScoopieError::WrongDigest(file_name.into())),
-                },
-                None => Ok(DownloadStatus::Downloaded(file_name.into())),
-            }
-        };
-
-        if file_path.exists() {
-            let file_metadata = metadata(&file_path)
-                .map_err(|_| (ScoopieError::FailedToGetMetadata(file_path.to_path_buf())))?;
-
-            match file_metadata.len().eq(&total_size) {
-                true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
-                false => {
-                    file_path.rm()?;
-                    downloader()
-                }
-            }
-        } else {
-            downloader()
-        }
-    } else {
-        Err(ScoopieError::RequestFailed(
+    if response.status_code < 200 && response.status_code > 299 {
+        return Err(ScoopieError::RequestFailed(
             file_name.into(),
             response.reason_phrase,
-        ))
+        ));
+    }
+
+    let total_size = response
+        .headers
+        .get("content-length")
+        .and_then(|size| size.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    let mut downloader = || {
+        let pkg_name = pkg_name.bold();
+
+        let mut file = BufWriter::new(
+            File::create(&file_path)
+                .map_err(|_| ScoopieError::UnableToCreateFile(file_name.into()))?,
+        );
+
+        let mut chunk = [0; 8192];
+
+        let mut downloaded = 0;
+
+        let mut sp = Spinner::new(Dots, format!("Collecting {pkg_name}"), Blue);
+
+        while let Ok(bytes_read) = response.read(&mut chunk) {
+            if bytes_read == 0 {
+                break;
+            }
+
+            downloaded += bytes_read;
+
+            file.write_all(&chunk[..bytes_read])
+                .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
+
+            let percent = format!("{:.2}%", downloaded as f64 / total_size as f64).bold();
+
+            sp.update_text(format!(
+                "Collecting {pkg_name}: [{percent} ({downloaded}/{total_size})]",
+            ));
+        }
+
+        file.flush()
+            .map_err(|_| ScoopieError::FlushFile(file_path.to_path_buf()))?;
+
+        match verify {
+            Some(hash) => match hash.verify(&file_path)? {
+                true => {
+                    sp.success(&format!("Successfully collected and verified {pkg_name}"));
+                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
+                }
+                false => {
+                    sp.fail(&format!(
+                        "Successfully collected but failed to verify {pkg_name}"
+                    ));
+                    Err(ScoopieError::WrongDigest(file_name.into()))
+                }
+            },
+            None => {
+                sp.success(&format!("Successfully collected {pkg_name}"));
+                Ok(DownloadStatus::Downloaded(file_name.into()))
+            }
+        }
+    };
+
+    if file_path.exists() {
+        let file_metadata = metadata(&file_path)
+            .map_err(|_| (ScoopieError::FailedToGetMetadata(file_path.to_path_buf())))?;
+
+        match file_metadata.len().eq(&total_size) {
+            true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
+            false => file_path.rm().and_then(|_| downloader()),
+        }
+    } else {
+        downloader()
     }
 }
 
@@ -220,8 +227,15 @@ fn sanitize<T: AsRef<str>>(input: T) -> String {
 
     // Create regex patterns
     let reserved_pattern =
-        Regex::new("[<>:\"/\\\\|?*\u{0000}-\u{001F}\u{007F}\u{0080}-\u{009F}]+").unwrap();
-    let outer_periods_pattern = Regex::new("^\\.+|\\.+$").unwrap();
+        match Regex::new("[<>:\"/\\\\|?*\u{0000}-\u{001F}\u{007F}\u{0080}-\u{009F}]+") {
+            Ok(patt) => patt,
+            Err(_) => unreachable!(),
+        };
+
+    let outer_periods_pattern = match Regex::new("^\\.+|\\.+$") {
+        Ok(patt) => patt,
+        Err(_) => unreachable!(),
+    };
 
     // Apply regex replacements and conversions
     let result = reserved_pattern.replace_all(input.as_ref(), REPLACEMENT);
@@ -232,7 +246,10 @@ fn sanitize<T: AsRef<str>>(input: T) -> String {
     // Windows-specific checks to match any of the reserved Windows filenames
     #[cfg(windows)]
     {
-        let windows_reserved_pattern = Regex::new("^(con|prn|aux|nul|com\\d|lpt\\d)$").unwrap();
+        let windows_reserved_pattern = match Regex::new("^(con|prn|aux|nul|com\\d|lpt\\d)$") {
+            Ok(patt) => patt,
+            Err(_) => unreachable!(),
+        };
         if windows_reserved_pattern.is_match(result.as_str()) {
             return result + REPLACEMENT;
         }

@@ -1,13 +1,11 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum FileKind {
-    ZipArchive,
     SevenZipArchive,
-    TarArchive,
-    GZipArchive,
-    LZMAArchive,
-    LZHArchive,
+    ExeFile,
+    MsiFile,
+    InnoFile,
     Other,
 }
 

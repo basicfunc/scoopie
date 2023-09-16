@@ -41,6 +41,9 @@ pub enum ScoopieError {
     // Query Errors
     InvalidRegex(String),
 
+    // Command Errors
+    UnableToExecuteCmd,
+
     // Common Errors
     UnableToMkTmpDir,
     UserDirUnavailable,
@@ -63,6 +66,7 @@ pub enum ScoopieError {
     UnableToOpenEnvRegistry,
     UnsupportedArch,
     UnableToGetEnvVar(String),
+    NonUTF8Bytes,
     Unknown,
 }
 
@@ -169,6 +173,8 @@ impl Display for ScoopieError {
             ScoopieError::UnsupportedArch => write!(f, "Failed as current architecture is not supported."),
             ScoopieError::UnableToGetEnvVar(var) => write!(f, "Failed to get environment variable: \"{var}\" from current user's registry"),
             ScoopieError::Unknown => write!(f, "Unknow error occured"),
+            ScoopieError::NonUTF8Bytes => write!(f, "Failed to convert to string due to invalid bytes"),
+            ScoopieError::UnableToExecuteCmd => write!(f, "Unable to execute command")
         }
     }
 }

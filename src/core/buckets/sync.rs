@@ -79,8 +79,6 @@ impl Sync for Bucket {
         let temp_dir_builder = TempDir::build()?;
         let temp_dir = temp_dir_builder.path();
 
-        // let mut sp = Spinner::new(Dots, format!("Fetching bucket {name}..."), Blue);
-
         let repo = RepoBuilder::new()
             .clone(url, &temp_dir)
             .map_err(|_| ScoopieError::SyncUnableToFetchRepo)?;
@@ -96,7 +94,6 @@ impl Sync for Bucket {
         let bucket_dir = Config::buckets_dir()?;
         let bucket_path = bucket_dir.join(name);
 
-        // sp.update_text(format!("Reading metadata for bucket {name}"));
         let mut metadata = MetaData::read()?;
 
         let st = match (
@@ -105,27 +102,17 @@ impl Sync for Bucket {
         ) {
             (true, true) => SyncStatus::UpToDate(name.into()),
             (true, false) => {
-                // sp.update_text(format!("Reading manifests from bucket {name}..."));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
                 metadata.write(name, url, &commit_id)?;
                 SyncStatus::Synced(name.into())
             }
 
             (false, _) => {
-                // sp.update_text(format!("Reading manifests from bucket {name}"));
                 Self::read(&temp_dir)?.write_to(&bucket_path);
                 metadata.write(name, url, &commit_id)?;
                 SyncStatus::Created(name.into())
             }
         };
-
-        // match st {
-        //     SyncStatus::UpToDate(_) => {
-        //         sp.success(&format!("Bucket: {name} is already synced to remote"))
-        //     }
-        //     SyncStatus::Synced(_) => sp.success(&format!("Bucket: {name} synced to remote")),
-        //     SyncStatus::Created(_) => sp.success(&format!("Bucket: {name} has been created")),
-        // };
 
         Ok(st)
     }

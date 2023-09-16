@@ -1,15 +1,12 @@
 mod extractor;
 
 use extractor::FileKind;
-use std::path::PathBuf;
 
 use crate::core::{
     buckets::{Buckets, Query},
     config::*,
     download::*,
 };
-
-use crate::utils::*;
 
 pub fn install(app: &str) {
     let query = app.trim().to_lowercase();

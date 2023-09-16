@@ -33,7 +33,7 @@ impl ExecuteCommand for InstallCommand {
         } else if self.download_only {
             match &self.app {
                 Some(app) => {
-                    let st = Downloader::download(app, true);
+                    let st = Downloader::download(app, true).unwrap();
                     println!("{:?}", st);
                 }
                 None => {
