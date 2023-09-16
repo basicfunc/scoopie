@@ -18,7 +18,6 @@ argh = "0.1.10"
 sha2 = "0.10.7"
 sha1 = "0.10.5"
 md-5 = "0.10.5"
-digest = "0.10.7"
 hex = "0.4.3"
 
 # For parllel computing
@@ -27,23 +26,19 @@ rayon = "1.7.0"
 # For cloning git repositories
 git2 = "0.18.0"
 
-# To query through buckets
-regex-lite = "0.1.0"
-
 # For de/serialization
 serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.99"
 url = { version = "2.4.0", features = ["serde"] }
 
-# To download packages from remote
+# To download packages from internet
 minreq = { version = "2.10.0", features = ["https-rustls"] }
 
+# To regex evaluation
+regex-lite = "0.1.0"
+
 # To show spinners instead of waiting
-indicatif = "0.17.6"
+spinoff = { version = "0.8.0", default-features = false, features = ["dots"] }
 
-# To shows colors in terminal
-console = "0.15.7"
-
-# To manipulate registries for current user
-winreg = "0.50.0"
-powershell_script = "1.1.0"
+# To show colors in terminal
+colored = "2.0.4"
