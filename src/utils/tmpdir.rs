@@ -7,8 +7,7 @@ use std::{
 
 use crate::error::ScoopieError;
 
-use digest::Digest;
-use md5::Md5;
+use md5::{Digest, Md5};
 
 pub struct TempDir(PathBuf);
 

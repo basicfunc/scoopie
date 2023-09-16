@@ -1,4 +1,4 @@
-mod env;
+mod pwsh;
 mod tmpdir;
 
 use crate::error::ScoopieError;
@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-pub use env::Env;
+pub use pwsh::Pwsh;
 pub use tmpdir::TempDir;
 
 pub trait Remove {
@@ -33,13 +33,13 @@ impl Remove for PathBuf {
 
 pub trait CreateDir {
     type Error;
-    fn create(path: Self) -> Result<(), Self::Error>;
+    fn create(path: &Self) -> Result<(), Self::Error>;
 }
 
 impl CreateDir for PathBuf {
     type Error = ScoopieError;
 
-    fn create(path: Self) -> Result<(), Self::Error> {
+    fn create(path: &Self) -> Result<(), Self::Error> {
         DirBuilder::new()
             .recursive(true)
             .create(&path)
