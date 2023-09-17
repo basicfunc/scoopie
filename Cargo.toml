@@ -36,9 +36,7 @@ minreq = { version = "2.10.0", features = ["https-rustls"] }
 
 # To regex evaluation
 regex-lite = "0.1.0"
-
-# To show spinners instead of waiting
-spinoff = { version = "0.8.0", default-features = false, features = ["dots"] }
+indicatif = { version = "0.17.6", features = ["rayon"] }
 
 # To show colors in terminal
-colored = "2.0.4"
+console = "0.15.7"
