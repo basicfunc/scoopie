@@ -10,7 +10,7 @@ pub use sync::*;
 
 use std::{collections::HashMap, fmt, format, write};
 
-use colored::*;
+use console::style;
 use serde::{Deserialize, Serialize};
 
 pub type AppName = String;
@@ -43,12 +43,12 @@ impl fmt::Display for Buckets {
             self.0
                 .iter()
                 .flat_map(|(bucket_name, bucket)| {
-                    let bucket_name = bucket_name.blue();
+                    let bucket_name = style(bucket_name).blue();
 
                     bucket.0.iter().map(move |(app_name, manifest)| {
-                        let app = app_name.green();
-                        let version = (format!("v{}", manifest.version)).bright_black();
-                        let desc = &manifest.description.bright_white();
+                        let app = style(app_name).green();
+                        let version = style(format!("v{}", manifest.version)).magenta();
+                        let desc = style(&manifest.description).white();
                         format!("{app}/{bucket_name}  {version}\n  {desc}\n")
                     })
                 })

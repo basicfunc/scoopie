@@ -15,7 +15,9 @@ use super::manifest::Manifest;
 use super::metadata::MetaData;
 use super::{Bucket, Buckets};
 
+use console::style;
 use git2::build::RepoBuilder;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde_json::json;
 
@@ -59,23 +61,35 @@ pub trait SyncAll {
 impl SyncAll for Buckets {
     type Error = ScoopieError;
     fn sync() -> Result<Vec<SyncStatus>, Self::Error> {
-        Config::read()?
-            .known_buckets()
+        let buckets = Config::read()?.known_buckets();
+        let num_buckets = buckets.len();
+
+        let st = ProgressStyle::with_template("{spinner:.bold} ({pos}/{len}) {msg}").unwrap();
+
+        let pb = ProgressBar::new(num_buckets as u64);
+        pb.set_style(st);
+        pb.set_message(
+            style("Syncing buckets from the remote...")
+                .bold()
+                .to_string(),
+        );
+
+        buckets
             .par_iter()
-            .map(|v| Bucket::sync(v.0, v.1))
+            .map(|v| Bucket::sync(&pb, v.0, v.1))
             .collect()
     }
 }
 
 trait Sync: ReadFromRepo {
     type Error;
-    fn sync(name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error>;
+    fn sync(pb: &ProgressBar, name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error>;
 }
 
 impl Sync for Bucket {
     type Error = ScoopieError;
 
-    fn sync(name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error> {
+    fn sync(pb: &ProgressBar, name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error> {
         let temp_dir_builder = TempDir::build()?;
         let temp_dir = temp_dir_builder.path();
 
@@ -113,6 +127,8 @@ impl Sync for Bucket {
                 SyncStatus::Created(name.into())
             }
         };
+
+        pb.inc(1);
 
         Ok(st)
     }

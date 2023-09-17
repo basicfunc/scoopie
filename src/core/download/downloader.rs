@@ -2,17 +2,16 @@ use std::{
     fs::{metadata, File},
     io::{BufWriter, Read, Write},
     iter::zip,
-    unreachable,
 };
 
-use colored::*;
-use regex_lite::Regex;
-use spinoff::{spinners::Dots, Color::Blue, Spinner};
+use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 use url::Url;
 
 use super::Hash;
 
 use {
+    crate::comptime_regex,
     crate::core::{buckets::*, config::*},
     crate::error::*,
     crate::utils::*,
@@ -91,34 +90,31 @@ fn dwnld(
         .unwrap_or(0);
 
     let mut downloader = || {
-        let pkg_name = pkg_name.bold();
-
         let mut file = BufWriter::new(
             File::create(&file_path)
                 .map_err(|_| ScoopieError::UnableToCreateFile(file_name.into()))?,
         );
 
-        let mut chunk = [0; 8192];
+        let st = ProgressStyle::with_template(
+            "{spinner:.bold} {msg}: [{percent:.bold}% ({bytes:.bold}/{total_bytes:.bold})]",
+        )
+        .unwrap();
 
-        let mut downloaded = 0;
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(st);
+        pb.set_message(format!("Collecting package {}", style(pkg_name).bold()));
 
-        let mut sp = Spinner::new(Dots, format!("Collecting {pkg_name}"), Blue);
+        let mut chunk = [0; 4096];
 
         while let Ok(bytes_read) = response.read(&mut chunk) {
             if bytes_read == 0 {
                 break;
             }
 
-            downloaded += bytes_read;
-
             file.write_all(&chunk[..bytes_read])
                 .map_err(|_| ScoopieError::ChunkWrite(file_path.to_path_buf()))?;
 
-            let percent = format!("{:.2}%", downloaded as f64 / total_size as f64).bold();
-
-            sp.update_text(format!(
-                "Collecting {pkg_name}: [{percent} ({downloaded}/{total_size})]",
-            ));
+            pb.inc(bytes_read as u64);
         }
 
         file.flush()
@@ -127,18 +123,26 @@ fn dwnld(
         match verify {
             Some(hash) => match hash.verify(&file_path)? {
                 true => {
-                    sp.success(&format!("Successfully collected and verified {pkg_name}"));
+                    pb.finish_with_message(format!(
+                        "Successfully collected and verified {}",
+                        style(pkg_name).bold()
+                    ));
                     Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
                 }
                 false => {
-                    sp.fail(&format!(
-                        "Successfully collected but failed to verify {pkg_name}"
+                    pb.abandon_with_message(format!(
+                        "Successfully collected but failed to verify {}",
+                        style(pkg_name).bold()
                     ));
+
                     Err(ScoopieError::WrongDigest(file_name.into()))
                 }
             },
             None => {
-                sp.success(&format!("Successfully collected {pkg_name}"));
+                pb.finish_with_message(format!(
+                    "Successfully collected {}",
+                    style(pkg_name).bold()
+                ));
                 Ok(DownloadStatus::Downloaded(file_name.into()))
             }
         }
@@ -148,7 +152,7 @@ fn dwnld(
         let file_metadata = metadata(&file_path)
             .map_err(|_| (ScoopieError::FailedToGetMetadata(file_path.to_path_buf())))?;
 
-        match file_metadata.len().eq(&total_size) {
+        match file_metadata.len() == total_size {
             true => Ok(DownloadStatus::AlreadyInCache(file_name.into())),
             false => file_path.rm().and_then(|_| downloader()),
         }
@@ -227,15 +231,9 @@ fn sanitize<T: AsRef<str>>(input: T) -> String {
 
     // Create regex patterns
     let reserved_pattern =
-        match Regex::new("[<>:\"/\\\\|?*\u{0000}-\u{001F}\u{007F}\u{0080}-\u{009F}]+") {
-            Ok(patt) => patt,
-            Err(_) => unreachable!(),
-        };
+        comptime_regex!("[<>:\"/\\\\|?*\u{0000}-\u{001F}\u{007F}\u{0080}-\u{009F}]+");
 
-    let outer_periods_pattern = match Regex::new("^\\.+|\\.+$") {
-        Ok(patt) => patt,
-        Err(_) => unreachable!(),
-    };
+    let outer_periods_pattern = comptime_regex!("^\\.+|\\.+$");
 
     // Apply regex replacements and conversions
     let result = reserved_pattern.replace_all(input.as_ref(), REPLACEMENT);
@@ -246,10 +244,7 @@ fn sanitize<T: AsRef<str>>(input: T) -> String {
     // Windows-specific checks to match any of the reserved Windows filenames
     #[cfg(windows)]
     {
-        let windows_reserved_pattern = match Regex::new("^(con|prn|aux|nul|com\\d|lpt\\d)$") {
-            Ok(patt) => patt,
-            Err(_) => unreachable!(),
-        };
+        let windows_reserved_pattern = comptime_regex!("^(con|prn|aux|nul|com\\d|lpt\\d)$");
         if windows_reserved_pattern.is_match(result.as_str()) {
             return result + REPLACEMENT;
         }
