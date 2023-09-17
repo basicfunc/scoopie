@@ -10,6 +10,13 @@ use std::{
 pub use pwsh::Pwsh;
 pub use tmpdir::TempDir;
 
+#[macro_export]
+macro_rules! comptime_regex {
+    ($pattern:expr) => {
+        regex_lite::Regex::new($pattern).expect(&format!("Invalid Regex Pattern: {}", $pattern))
+    };
+}
+
 pub trait Remove {
     type Error;
     fn rm(&self) -> Result<(), Self::Error>;
