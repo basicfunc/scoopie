@@ -10,15 +10,15 @@ Scoopie is a high-performance alternative to the Scoop package manager for Windo
 
 ## Key Features
 
-**Lightweight and Fast**: Scoopie sets a new standard for lightweight, high-speed package management. It leverages the full potential of parallel processing to execute operations simultaneously, turbocharging your tasks. With its minimalistic approach, Scoopie keeps dependencies to an absolute minimum, ensuring blazing-fast startup times and a compact footprint.
+- **Lightweight and Fast**: Scoopie sets a new standard for lightweight, high-speed package management. It leverages the full potential of parallel processing to execute operations simultaneously, turbocharging your tasks. With its minimalistic approach, Scoopie keeps dependencies to an absolute minimum, ensuring blazing-fast startup times and a compact footprint.
 
-**No External Dependencies**: Say goodbye to pre-installing Git or codecs – Scoopie comes prepared with them, simplifying your setup. It's ready to roll right out of the box, sparing you the hassle of hunting down dependencies.
+- **No External Dependencies**: Say goodbye to pre-installing Git or codecs – Scoopie comes prepared with them, simplifying your setup. It's ready to roll right out of the box, sparing you the hassle of hunting down dependencies.
 
-**Optimized Storage**: Scoopie redefines package storage by switching to a JSON-based bucket structure. This not only conserves precious disk space but also elevates your search experience to new heights.
+- **Optimized Storage**: Scoopie redefines package storage by switching to a JSON-based bucket structure. This not only conserves precious disk space but also elevates your search experience to new heights.
 
-**Seamless Downloads**: No need for external download managers like `aria2`. Scoopie handles package downloads with finesse, making the installation process hassle-free and the downloading experience seamless.
+- **Seamless Downloads**: No need for external download managers like `aria2`. Scoopie handles package downloads with finesse, making the installation process hassle-free and the downloading experience seamless.
 
-**Intuitive Command-Line Interface**: Scoopie boasts a user-friendly CLI that empowers you to effortlessly manage packages, conduct searches, and keep your installations up to date. Our CLI offers intuitive commands and informative feedback, ensuring a smooth and enjoyable experience for users of all levels.
+- **Intuitive Command-Line Interface**: Scoopie boasts a user-friendly CLI that empowers you to effortlessly manage packages, conduct searches, and keep your installations up to date. Our CLI offers intuitive commands and informative feedback, ensuring a smooth and enjoyable experience for users of all levels.
 
 ## Installation
 
