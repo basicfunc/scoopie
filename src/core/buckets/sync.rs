@@ -5,6 +5,7 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
+    time::Duration,
 };
 
 use crate::core::config::*;
@@ -16,8 +17,8 @@ use super::metadata::MetaData;
 use super::{Bucket, Buckets};
 
 use console::style;
-use git2::build::RepoBuilder;
-use indicatif::{ProgressBar, ProgressStyle};
+use git2::{build::RepoBuilder, FetchOptions};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde_json::json;
 
@@ -61,39 +62,48 @@ pub trait SyncAll {
 impl SyncAll for Buckets {
     type Error = ScoopieError;
     fn sync() -> Result<Vec<SyncStatus>, Self::Error> {
-        let buckets = Config::read()?.known_buckets();
-        let num_buckets = buckets.len();
+        let mb = MultiProgress::new();
 
-        let st = ProgressStyle::with_template("{spinner:.bold} ({pos}/{len}) {msg}").unwrap();
-
-        let pb = ProgressBar::new(num_buckets as u64);
-        pb.set_style(st);
-        pb.set_message(
-            style("Syncing buckets from the remote...")
-                .bold()
-                .to_string(),
-        );
-
-        buckets
+        Config::read()?
+            .known_buckets()
             .par_iter()
-            .map(|v| Bucket::sync(&pb, v.0, v.1))
+            .map(|v| Bucket::sync(&mb, v.0, v.1))
             .collect()
     }
 }
 
 trait Sync: ReadFromRepo {
     type Error;
-    fn sync(pb: &ProgressBar, name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error>;
+    fn sync(pb: &MultiProgress, name: &str, url: &str)
+        -> Result<SyncStatus, <Self as Sync>::Error>;
 }
 
 impl Sync for Bucket {
     type Error = ScoopieError;
 
-    fn sync(pb: &ProgressBar, name: &str, url: &str) -> Result<SyncStatus, <Self as Sync>::Error> {
+    fn sync(
+        mb: &MultiProgress,
+        name: &str,
+        url: &str,
+    ) -> Result<SyncStatus, <Self as Sync>::Error> {
         let temp_dir_builder = TempDir::build()?;
         let temp_dir = temp_dir_builder.path();
 
+        let pb = mb.add(ProgressBar::new_spinner());
+        pb.enable_steady_tick(Duration::from_millis(3));
+
+        pb.set_message(
+            style(format!("Fetching bucket {name} from remote..."))
+                .bold()
+                .to_string(),
+        );
+
+        let mut fo = FetchOptions::new();
+        fo.depth(1);
+
         let repo = RepoBuilder::new()
+            .bare(true)
+            .fetch_options(fo)
             .clone(url, &temp_dir)
             .map_err(|_| ScoopieError::SyncUnableToFetchRepo)?;
 
@@ -108,27 +118,70 @@ impl Sync for Bucket {
         let bucket_dir = Config::buckets_dir()?;
         let bucket_path = bucket_dir.join(name);
 
+        pb.set_message(
+            style(format!("Reading metadata for bucket {name}..."))
+                .bold()
+                .to_string(),
+        );
+
         let mut metadata = MetaData::read()?;
 
         let st = match (
             bucket_path.exists(),
             metadata.get(name).commit_id == commit_id,
         ) {
-            (true, true) => SyncStatus::UpToDate(name.into()),
+            (true, true) => {
+                pb.finish_with_message(
+                    style(format!("Bucket: {name} is already synced to the remote."))
+                        .bold()
+                        .to_string(),
+                );
+                SyncStatus::UpToDate(name.into())
+            }
             (true, false) => {
+                pb.set_message(
+                    style(format!("Fetching manifests from bucket {name}..."))
+                        .bold()
+                        .to_string(),
+                );
                 Self::read(&temp_dir)?.write_to(&bucket_path);
+                pb.set_message(
+                    style(format!("Writing metadata for bucket {name}..."))
+                        .bold()
+                        .to_string(),
+                );
                 metadata.write(name, url, &commit_id)?;
+                pb.finish_with_message(
+                    style(format!("Bucket: {name} is now synced to the remote."))
+                        .bold()
+                        .to_string(),
+                );
                 SyncStatus::Synced(name.into())
             }
 
             (false, _) => {
+                pb.set_message(
+                    style(format!("Fetching manifests from bucket {name}..."))
+                        .bold()
+                        .to_string(),
+                );
                 Self::read(&temp_dir)?.write_to(&bucket_path);
+                pb.set_message(
+                    style(format!("Writing metadata for bucket {name}..."))
+                        .bold()
+                        .to_string(),
+                );
                 metadata.write(name, url, &commit_id)?;
+                pb.finish_with_message(
+                    style(format!(
+                        "Bucket: {name} is created and synced to the remote."
+                    ))
+                    .bold()
+                    .to_string(),
+                );
                 SyncStatus::Created(name.into())
             }
         };
-
-        pb.inc(1);
 
         Ok(st)
     }

@@ -2,6 +2,7 @@ use std::{
     fs::{metadata, File},
     io::{BufWriter, Read, Write},
     iter::zip,
+    time::Duration,
 };
 
 use console::style;
@@ -103,6 +104,9 @@ fn dwnld(
         let pb = ProgressBar::new(total_size);
         pb.set_style(st);
         pb.set_message(format!("Collecting package {}", style(pkg_name).bold()));
+        pb.enable_steady_tick(Duration::from_millis(5));
+
+        // std::io::copy(&mut response.as_bytes(), &mut pb.wrap_write(file)).unwrap();
 
         let mut chunk = [0; 4096];
 
@@ -122,29 +126,10 @@ fn dwnld(
 
         match verify {
             Some(hash) => match hash.verify(&file_path)? {
-                true => {
-                    pb.finish_with_message(format!(
-                        "Successfully collected and verified {}",
-                        style(pkg_name).bold()
-                    ));
-                    Ok(DownloadStatus::DownloadedAndVerified(file_name.into()))
-                }
-                false => {
-                    pb.abandon_with_message(format!(
-                        "Successfully collected but failed to verify {}",
-                        style(pkg_name).bold()
-                    ));
-
-                    Err(ScoopieError::WrongDigest(file_name.into()))
-                }
+                true => Ok(DownloadStatus::DownloadedAndVerified(file_name.into())),
+                false => Err(ScoopieError::WrongDigest(file_name.into())),
             },
-            None => {
-                pb.finish_with_message(format!(
-                    "Successfully collected {}",
-                    style(pkg_name).bold()
-                ));
-                Ok(DownloadStatus::Downloaded(file_name.into()))
-            }
+            None => Ok(DownloadStatus::Downloaded(file_name.into())),
         }
     };
 
