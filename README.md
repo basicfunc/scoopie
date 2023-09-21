@@ -1,27 +1,36 @@
 # Scoopie (WIP)
-![Build CI](https://github.com/basicfunc/scoopie/actions/workflows/rust.yml/badge.svg)
+![Build CI](https://github.com/basicfunc/scoopie/actions/workflows/build.yml/badge.svg)
 
 > If Scoop is vanilla, Scoopie will be tutti frutti.
 >                                               - Rahul   
 
 Scoopie is a high-performance alternative to the Scoop package manager for Windows, built from the ground up in Rust. It aims to provide a blazing-fast package management experience while minimizing dependencies and optimizing resource usage. Scoopie leverages parallel processing, bundled tools, and an efficient storage structure to deliver exceptional performance.
 
+***NOTE: It is not meant to be one-to-one clone to Scoop, it just uses scoop buckets.***
+
 ## Key Features
 
-- **Lightweight and Fast**: Scoopie is designed to be lightweight and lightning-fast. It minimizes dependencies, resulting in a small footprint and quick startup times.
-- **Reduced Dependencies**: Scoopie comes compiled with Git, eliminating the need for users to pre-install it on their systems. This streamlines the installation process and ensures seamless integration with repositories and version control.
-- **Efficient Storage**: Instead of using a flat-file structure like Scoop, Scoopie leverages the power of SQLite. This optimized storage approach reduces disk space usage and enhances the search experience.
-- **Parallel Processing**: Scoopie harnesses the power of parallel processing to perform operations in parallel, greatly improving overall performance. This enables faster package installation, updates, and searches, enhancing the user experience.
-- **Built-in Download Manager**: Scoopie includes a bundled efficient download manager, eliminating the reliance on external tools like `aria2`. This simplifies the installation process and provides a seamless downloading experience.
-- **User-friendly CLI**: Scoopie offers a user-friendly command-line interface, allowing users to easily manage packages, perform searches, and update their installations. The CLI provides intuitive commands and helpful feedback to ensure a smooth experience.
+**Lightweight and Fast**: Scoopie sets a new standard for lightweight, high-speed package management. It leverages the full potential of parallel processing to execute operations simultaneously, turbocharging your tasks. With its minimalistic approach, Scoopie keeps dependencies to an absolute minimum, ensuring blazing-fast startup times and a compact footprint.
+
+**No External Dependencies**: Say goodbye to pre-installing Git or codecs – Scoopie comes prepared with them, simplifying your setup. It's ready to roll right out of the box, sparing you the hassle of hunting down dependencies.
+
+**Optimized Storage**: Scoopie redefines package storage by switching to a JSON-based bucket structure. This not only conserves precious disk space but also elevates your search experience to new heights.
+
+**Seamless Downloads**: No need for external download managers like `aria2`. Scoopie handles package downloads with finesse, making the installation process hassle-free and the downloading experience seamless.
+
+**Intuitive Command-Line Interface**: Scoopie boasts a user-friendly CLI that empowers you to effortlessly manage packages, conduct searches, and keep your installations up to date. Our CLI offers intuitive commands and informative feedback, ensuring a smooth and enjoyable experience for users of all levels.
 
 ## Installation
 
 To install Scoopie, follow these steps:
 
-1. Download the Scoopie installer from the official repository.
-2. Run the installer, and it will guide you through the installation process.
-3. Once installed, you can start using Scoopie right away.
+```bash
+> git clone https://github.com/rawhuul/scoopie
+> cd scoopie
+> cargo build --release
+> scoopie init <your desired path>
+> scoopie install <package>
+```
 
 ## Usage
 
@@ -41,10 +50,6 @@ Contributions to Scoopie are welcome! If you'd like to contribute, please follow
 ## License
 
 Scoopie is released under the MIT License. See the LICENSE file for more details.
-
-## Acknowledgements
-
-Scoopie would not be possible without the hard work and dedication of the open-source community. We extend our gratitude to the developers of Rust, SQLite, and other libraries used in this project.
 
 ## Contact
 
